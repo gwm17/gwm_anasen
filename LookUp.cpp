@@ -1,6 +1,11 @@
-//////////////////////////////Code: LookUp.cpp////////////////////////////////////////
-/////////////////////////////Date: June28_2016///////////////////////////////////////
-////////////////////////////Author: Nabin Rijal //////////////////////////////////////
+/*LookUp.cpp
+ *Class designed to take in srim files and calculate the energy loss of a particle 
+ *moving through gas a certain distance. Intended for use in ANASEN analysis. 
+ *
+ *N. Rijal -- June 2016
+ *Facelift by G.M. April 2019
+ */
+
 #include <iostream>
 #include <fstream>
 #include <string.h>
@@ -57,8 +62,6 @@ LookUp::LookUp(string Eloss_file, Double_t InputMass) {
     GoodELossFile = 0;
   } else {
     GoodELossFile = 1;        
-    //Read >> aux >> aux >> aux;// The first line has three strings (columns' description). NOPE. At least 
-    //Maria's didnt
     do{
       Read >> IonEnergy >> dEdx_e >> dEdx_n ;
       IonEnergy_v.push_back(IonEnergy);

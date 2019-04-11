@@ -1,3 +1,12 @@
+/*main.cpp
+ *
+ *Runs the ANASEN analysis
+ *This is where the user should set all of the option flags
+ *that they need for their analysis
+ *
+ * Gordon M. -- April 2019
+ */
+
 #include "gwmAnalyzer.h"
 #include <TROOT.h>
 #include <TApplication.h>

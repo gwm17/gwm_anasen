@@ -1,3 +1,11 @@
+/*LookUp.h
+ *Class designed to take in srim files and calculate the energy loss of a particle 
+ *moving through gas a certain distance. Intended for use in ANASEN analysis. 
+ *
+ *N. Rijal -- June 2016
+ *Facelift by G.M. April 2019
+ */
+
 #ifndef __LOOKUP_H__
 #define __LOOKUP_H__
 #include "TROOT.h"
@@ -5,11 +13,7 @@
 #include <iostream>
 #include <string>
 #include <fstream>
-/////////////////////////////////////////////////////////
-//////////////Code: LookUp.h/////////////////////////////
-////////////Date: June28_2016////////////////////////////
-///////////Author: Nabin Rijal //////////////////////////
-/////////////////////////////////////////////////////////
+
 using namespace std;
 
 class LookUp{
@@ -64,4 +68,3 @@ class LookUp{
 
 
 #endif 
-//////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,15 @@
-//Since included in dict, must be completely defined in header
+/*Track.h
+ *Class and structure for generating ANASEN tracking dictionary 
+ *in ROOT. This one is for the tracking, contains the larger Track
+ *class along with TrackEvent and RecoilEvent structure for use in other codes
+ *
+ *MUST be entirely defined in a header file due to the way that
+ *ROOT compiles a dictionary
+ *
+ *Gordon M. -- April 2019
+ *Based on previous version by M. Anastasiou, N. Rijal, J. Parker, et al
+ */
+
 #ifndef TRACK_H
 #define TRACK_H
 

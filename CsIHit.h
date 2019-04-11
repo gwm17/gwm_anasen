@@ -1,4 +1,16 @@
-//Since included in dict, must be completely defined in the header
+/*PCHit.h
+ *Class and structure for generating ANASEN tracking dictionary 
+ *in ROOT. This one is for the CsI, contains the larger CsIHit
+ *class along with a SortByCsI structure for use in other codes
+ *Some forced inheritance due to previous stages of analysis
+ *
+ *MUST be entirely defined in a header file due to the way that
+ *ROOT compiles a dictionary
+ *
+ *Gordon M. -- April 2019
+ *Based on previous version by M. Anastasiou, N. Rijal, J. Parker, et al
+ */
+
 #ifndef CSIHIT_H
 #define CSIHIT_H
 

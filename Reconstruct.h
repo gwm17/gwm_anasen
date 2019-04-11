@@ -1,3 +1,12 @@
+/*Reconstruct.h
+ *Class for implementing kinematic reconstruction of reaction events in ANASEN detector
+ *Should be customized for each unique experiment
+ *For use in the analyzer class 
+ *
+ * Gordon M. -- April 2019
+ * Based on previous version by M. Anastasiou
+ */
+
 #ifndef RECONSTRUCT_H
 #define RECONSTRUCT_H
 
