@@ -32,13 +32,21 @@ analyzer::analyzer() {
 
 }
 
+//Destructor
 analyzer::~analyzer() {
+  //free dynamic memory
   delete Ne18_eloss;
   delete Ne20_eloss;
   delete Na21_eloss;
   delete proton_eloss;
   delete alpha_eloss;
 }
+
+/*SetFlag()
+ *To compartmentalize the analysis, uses many different functions
+ *To make the program still customizable, use flags in the main run progress to pick
+ *and choose which analysis is run; Flags should be set by feeding an all LOWERCASE name string
+ */
 void analyzer::SetFlag(string flagName) {
   
   if (flagName == "pcplots") PCPlots = 1;
@@ -61,6 +69,11 @@ void analyzer::SetFlag(string flagName) {
 
 }
 
+/*getCut()
+ *Grabs the different cuts for the program
+ *Cuts should be stored in a file and feed through this function
+ *Cuts can all be in one file or in many files, just make sure names match
+ */
 void analyzer::getCut() {
   string protonName, alphaName, needleName;
   cout<<"Enter name of the proton cut file: ";
@@ -87,6 +100,11 @@ void analyzer::getCut() {
   needlefile->Close();
 }
 
+/*recoilReset()
+ *With RecoilEvent being promoted to a global structure there needs to be
+ *a method for setting the class instance of RecoilEvent back to zero
+ *Was originally contained in the Track class
+ */
 void analyzer::recoilReset() {
   recoil.IntPoint = -10;
   recoil.BeamEnergy = -10;
@@ -123,6 +141,11 @@ void analyzer::recoilReset() {
   recoil.Beam_Qv_21Na = -10;
 }
 
+/*GetPCWireRadius()
+ *Reads the pc wire radius file, and stores in a vector
+ *for use in the program
+ *PCWireRadius file is a txt file not a root file
+ */
 vector<Double_t> analyzer::GetPCWireRadius() {
   ifstream pcrfile;
   string pcrName;
@@ -152,6 +175,13 @@ vector<Double_t> analyzer::GetPCWireRadius() {
   }
 }
 
+/*MyFill()
+ *A method for creating, storing, and filling ROOT histograms
+ *Looks for histogram stored in a map, if doesn't exist creates a new histogram which is then
+ *stored in the map and in the ROOT object array
+ *IMPROVEMENT: Look and see if TObjArray has any built in method for checking if there is an
+ * object; would cut down on amount of dynamic memory allocated
+ */
 void analyzer::MyFill(string name, int binsX, double lowX, double highX, double valueX) {
   try{
     fhmap.at(name)->Fill(valueX);
@@ -175,6 +205,7 @@ void analyzer::MyFill(string name, int binsX, double lowX, double highX, double 
   }
 }
 
+//PhiDiff() Calculates angular difference from 0 to pi
 Double_t analyzer::PhiDiff(Float_t phi1, Float_t phi2) {
   Double_t phiDiff = abs(phi1-phi2);
   if(phiDiff>TMath::Pi() && phiDiff<= 2*TMath::Pi()) {
@@ -183,7 +214,13 @@ Double_t analyzer::PhiDiff(Float_t phi1, Float_t phi2) {
   return phiDiff;
 }
 
-Int_t analyzer::FindMaxPC(Double_t phi, PCHit &PC) {
+/*FindMaxPC()
+ *Looks for the PC wire hit in the event with the maximum PC Energy
+ *If there is a chance that there are two equally valid hits, returns the one 
+ *that is closer to the event in phi
+ *AMBIGUITY: Closer to what exactly in phi? 
+ */
+Int_t analyzer::FindMaxPC(Double_t phi, PCHit &PC) {//Pretty sure the PCHit doesn't need ref
   
   Int_t MaxPCindex = -1, NexttoMaxPCindex = -1;
   Double_t MaxPC = -10, NexttoMaxPC = -10;
@@ -216,6 +253,11 @@ Int_t analyzer::FindMaxPC(Double_t phi, PCHit &PC) {
 
 }
 
+/*MCP_RF()
+ *First of the analysis methods; Makes and fills histograms for the MCP and RF
+ *timing. Also performs the major cut on the data, the MCP_RF cut, where the correct 
+ *beam for the experiment is selected
+ */
 bool analyzer::MCP_RF() {
 
   ICne_E_sum = input_ICne_E_sum;
@@ -267,6 +309,15 @@ bool analyzer::MCP_RF() {
   return true;
 }
 
+/*Track1()
+ *Creates and stores what are refered to as track1 type events. This is where there is both
+ *a good Si event and a good PC event. Actually is a bit tricky to do. Basically use FindMaxPC()
+ *to pick out if there is a good PC in range of the Si event; else move on and keep looking
+ *For later reference the good PC event information is stored *in PCGoodEnergy & PCGoodPCZ and 
+ *Si energy in SiEnergy_vec
+ *Tracks are then sorted by the method specified in the Track class, and used events are marked 
+ *by setting the Si energy and PC energy in the data to an unphysical value  
+ */
 void analyzer::Track1() {
 
   Int_t GoodPC = -1;
@@ -330,12 +381,17 @@ void analyzer::Track1() {
 
 }
 
+/*Track2()
+ *Do for Track2 as was done to Track1, where track2 type events are just Si hits
+ *sans the PC info
+ *Again, sorted with method specified in Track
+ */
 void analyzer::Track2() {
   for (unsigned int i = 0; i<(*Si.ReadHit).size(); i++) {
     sievent sihit  = (*Si.ReadHit)[i];
     if (sihit.Energy == -1000) {
       continue;
-    } else if (sihit.Energy <= 0) {
+    } else if (sihit.Energy <= 0) {//Why two conditions? They overlap
       continue;
     } else {
       TrackEvent trackhit;
@@ -359,6 +415,11 @@ void analyzer::Track2() {
        tracks.Tr_Sisort_method);
 }
 
+/*Track3()
+ *And lo there do be track3 type events as well. Recipie is mostly the same, where track3's 
+ *are defined as PC only events
+ *Again, sort as specified in Track
+ */
 void analyzer::Track3() {
 
   MyFill("PC_ReadHit_size",500,0,50,(*PC.ReadHit).size());
@@ -366,7 +427,7 @@ void analyzer::Track3() {
     pcevent pchit = (*PC.ReadHit)[i];
     if(pchit.Energy == -10) {
       continue;
-    } else if (pchit.Energy <= 0) {
+    } else if (pchit.Energy <= 0) {//Again, not exclusive conditions. Necessary?
       continue;
     } else {
       TrackEvent trackhit;
@@ -406,6 +467,10 @@ void analyzer::Track3() {
  
 }
 
+/*PCPlotting()
+ *Makes plots for basic PC properties
+ *Really nothing too crazy
+ */
 void analyzer::PCPlotting() {
 
   for(int i=0; i<tracks.NTracks; i++) {
@@ -437,6 +502,17 @@ void analyzer::PCPlotting() {
   }  
 }
 
+/*TrackCalc()
+ *Method of checks! Goal is to run and make sure that all of the tracking info
+ *is good up to this point (which should be MCPRF, Tracks 1,2,3). Calculates and stores
+ *the interaction point and beam energy for each event 
+ *IMPROVEMENT: CheckBasic should probably be removed, these tests should be done everytime,
+ *and removing the extra if statements would help boost the speed (probably not major, but every
+ *little bit helps)
+ *OPTIMIZATION: Look at how some of the later methods work and make this like those. Probably is
+ *more readable/clean to locally store all of these track values at the top of the loop instead
+ *of constantly reaccesing the same TrackEvent (Probably no performance gain tho :( )
+ */
 void analyzer::TrackCalc() {
 
   for(int i=0; i<tracks.NTracks1; i++) {
@@ -507,6 +583,11 @@ void analyzer::TrackCalc() {
   }
 }
 
+/*PCWireCalibration()
+ *Option for calibrating pc wires; 
+ *Makes a very large number of plots, so only run if necessary
+ *Requires gold_pos, which has to be entered manually
+ */
 void analyzer::PCWireCalibration() {
 
   Double_t mpc, bpc;
@@ -625,6 +706,10 @@ void analyzer::PCWireCalibration() {
   }
 }
 
+/*EdEcor()
+ *Makes corrected EdE plots
+ *Slices by detector type
+ */
 void analyzer::EdEcor() {
   for (int i=0; i<tracks.NTracks1; i++) {
     Double_t intp = tracks.TrEvent[i].IntPoint;
@@ -661,6 +746,10 @@ void analyzer::EdEcor() {
   }
 }
 
+/*PCPlottting2()
+ *PC plots again, but this one is  for the later stages of analysis
+ *Pretty intensive, so again only run when necessary
+ */
 void analyzer::PCPlotting2() {
   Double_t PCMaxE = -1.0;
   Int_t PCMaxIndex = -1;
@@ -728,6 +817,11 @@ void analyzer::PCPlotting2() {
   }
 }
 
+/*CalculateResidE()
+ *First reconstruction method
+ *Uses ReconstructHeavy from Reconstruction class
+ *Focuses on Energy of the residual
+ */
 void analyzer::CalculateResidE() {
   Reconstruct Elastic2(M_18Ne, M_alpha, M_p, M_21Na);
   Elastic2.ELoss_light = proton_eloss;
@@ -867,6 +961,13 @@ void analyzer::CalculateResidE() {
   Elastic2.ELoss_beam = NULL;
 }
 
+/*ReconstructMe()
+ *This is the main reconstruction method; reconstructs properties of the beam,
+ *interaction point, and recoil using both kinematics and tracking information
+ *Utilizes ReconstructHeavy, Reconstruct20Ne, etc. This is an absolute monster of a code
+ *and will take the most time of the bunch to run.
+ *Have fun
+ */
 void analyzer::ReconstructMe() {
   Reconstruct Elastic1(M_18Ne,M_alpha,M_p,M_21Na);
   Elastic1.ELoss_light = proton_eloss;
@@ -1326,6 +1427,11 @@ void analyzer::ReconstructMe() {
   Elastic1.ELoss_beam = NULL;
 }
 
+/*AlphaScatter()
+ *Method for elastic scattering reconstruction
+ *Need to check, but my guess is its for a calibration
+ *or as a way to normalize for cross sections
+ */
 void analyzer::AlphaScatter() {
 
   for(int i=0; i<tracks.NTracks1; i++) {
@@ -1448,6 +1554,13 @@ void analyzer::AlphaScatter() {
   }
 }
 
+/*run()
+ *Method that runs the code
+ *Takes in a name for a .txt data list and a single output file for histograms,
+ *tracking data, and recoil data
+ *This is really the only function outside of SetFlag() that should ever be called by the 
+ *main.
+ */
 void analyzer::run() {
 
 
