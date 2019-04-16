@@ -551,7 +551,7 @@ void analyzer::TrackCalc() {
 
     if (Beam_and_Eloss) {
       float length_check = ana_length - tracks.TrEvent[i].IntPoint;
-      if(length_check>0.0 && length_check>ana_length) {   
+      if(length_check>0.0 && length_check<ana_length) {   
         tracks.TrEvent[i].BeamEnergy = Ne18_eloss->GetLookupEnergy(BeamE, length_check);
         if(CheckBasic && (tracks.TrEvent[i].BeamEnergy<0.0 || 
                           tracks.TrEvent[i].BeamEnergy>BeamE)){
