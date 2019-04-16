@@ -62,7 +62,7 @@ void analyzer::SetFlag(string flagName) {
   else if (flagName == "residualenergycalc20ne") ResidualEnergy_Calc_20Ne = 1;
   else if (flagName == "reconstructionsession") Reconstruction_Session = 1;
   else if (flagName == "elasticscatalpha") Elastic_Scat_Alpha = 1;
-  else if (flagName == "cutflag") Elastic_Scat_Alpha = 1;
+  else if (flagName == "cutflag") cutFlag = 1;
   else {
     cout<<"Invalid flag given as argument!"<<endl;
   }
@@ -88,15 +88,15 @@ void analyzer::getCut() {
   strcpy(needlename, needleName.c_str());
 
   TFile *protonfile = new TFile(protonname, "READ");
-  protonCut = (TCutG*) protonfile->Get("protonCut");
+  protonCut = (TCutG*) protonfile->Get("protons_edetheta_q3r1_run2007_2044_18Necut_09132018");
   protonfile->Close();
 
   TFile *alphafile = new TFile(alphaname, "READ");
-  alphaCut = (TCutG*) alphafile->Get("alphaCut");
+  alphaCut = (TCutG*) alphafile->Get("alphas_edetheta_q3r1_run2007_2044_18Necut_09132018");
   alphafile->Close();
 
   TFile *needlefile = new TFile(needlename, "READ");
-  needleCut = (TCutG*) needlefile->Get("needleCut");
+  needleCut = (TCutG*) needlefile->Get("resEn_vs_neEn_348Torr_PCZfactor_09202019");
   needlefile->Close();
 }
 
@@ -216,14 +216,11 @@ Double_t analyzer::PhiDiff(Float_t phi1, Float_t phi2) {
 
 /*FindMaxPC()
  *Looks for the PC wire hit in the event with the maximum PC Energy
- *If there is a chance that there are two equally valid hits, returns the one 
- *that is closer to the event in phi
- *AMBIGUITY: Closer to what exactly in phi? 
  */
 Int_t analyzer::FindMaxPC(Double_t phi, PCHit &PC) {//Pretty sure the PCHit doesn't need ref
   
-  Int_t MaxPCindex = -1, NexttoMaxPCindex = -1;
-  Double_t MaxPC = -10, NexttoMaxPC = -10;
+  Int_t MaxPCindex = -1;
+  Double_t MaxPC = -10;
 
   //phi window
   Double_t phiMin = 30.0*TMath::Pi()/180.0;
@@ -233,21 +230,10 @@ Int_t analyzer::FindMaxPC(Double_t phi, PCHit &PC) {//Pretty sure the PCHit does
     PC.pc_obj = (*PC.ReadHit)[k];
     if(PC.pc_obj.Energy>=0.0 && PhiDiff(PC.pc_obj.PhiW, phi) < phiMin) {//toss empties & check win
       if( PC.pc_obj.Energy >= MaxPC) { 
-        NexttoMaxPC = MaxPC;
-        NexttoMaxPCindex = MaxPCindex;
         MaxPC = PC.pc_obj.Energy;
         MaxPCindex = k;
-      } else if (PC.pc_obj.Energy >= NexttoMaxPC) {
-        NexttoMaxPC = PC.pc_obj.Energy;
-        NexttoMaxPCindex = k;
-      }
+      } 
     }
-  }
-  
-  //If there are two poss, chose the closer one in phi
-  if (NexttoMaxPCindex>0 && PhiDiff((*PC.ReadHit)[MaxPCindex].PhiW,phi)>
-                            PhiDiff((*PC.ReadHit)[NexttoMaxPCindex].PhiW,phi)) {
-    return NexttoMaxPCindex;
   }
   return MaxPCindex;
 
@@ -338,6 +324,7 @@ void analyzer::Track1() {
     if(GoodPC > -1) {
       pcevent pchit = (*PC.ReadHit)[GoodPC];
       TrackEvent trackhit;
+      trackhit.TrackType = 1;
       trackhit.SiEnergy = sihit.Energy;
       trackhit.SiTime = sihit.Time;
       trackhit.SiPhi = sihit.PhiW;
@@ -573,13 +560,6 @@ void analyzer::TrackCalc() {
         }
       }
     }
-
-    //Wtf is this
-    int WirePlus4 = (tracks.TrEvent[i].WireID+2)%24;
-    int WireMinus4 = (tracks.TrEvent[i].WireID-2+24)%24;
-    if(PCGoodEnergy[WirePlus4]>0 || PCGoodEnergy[WireMinus4]>0) {
-      continue;
-    }
   }
 }
 
@@ -800,9 +780,11 @@ void analyzer::PCPlotting2() {
     }
     if(protonCut->IsInside(sie, pce*sin(theta))) {
       for(int sid=0; sid<28; sid++) {
-        Double_t sie_v = SiEnergy_vec[sid][i];
-        if((sid != tracks.TrEvent[i].DetID && abs(sie-sie_v)>1.0e-10) || sie_v>0 ) {
-          MyFill("SiEnergy_track1_vs_SiEnergy_All",300,-1,35,sie_v,300,-1,35,sie);
+        for(unsigned int svid; svid<SiEnergy_vec[sid].size(); svid++) {
+          Double_t sie_v = SiEnergy_vec[sid][svid];
+          if((sid != tracks.TrEvent[i].DetID && abs(sie-sie_v)>1.0e-10) || sie_v>0 ) {
+            MyFill("SiEnergy_track1_vs_SiEnergy_All",300,-1,35,sie_v,300,-1,35,sie);
+          }
         } 
       }
       if(sie>0) {
@@ -855,7 +837,7 @@ void analyzer::CalculateResidE() {
         
         Float_t r_fullpath, r_IntPtoNeedle, ResidE_recoil;
         if(rtheta != 0.0 && rtheta != 90.0 && rtheta != 180.0) { 
-          r_fullpath = 2.2/sin(rtheta/rads2deg); //2.2?
+          r_fullpath = 2.2/sin(rtheta/rads2deg); //2.2? radius of ic
           if(intp > 17.8) {
             r_IntPtoNeedle  = (intp-17.8)/cos(rtheta/rads2deg);
           }
@@ -1002,7 +984,6 @@ void analyzer::ReconstructMe() {
         Double_t retot = recoil.Energy_tot;
         Double_t rbe = recoil.BeamEnergy;
 
-        //Is this first condition supposed to be recoil.Ex>0.0?
         if(rex>-1.0 && rex<1.0 && needleCut->IsInside(ICne_E_diff*0.0116, resE)) {
           Elastic1.ReconstructHeavy_Qvalue(QValue, tracks, i, recoil);
 	  MyFill("Ex_21Na_Qvalue_Rec",600,-10,40,recoil.Ex_21Na);		   
@@ -1236,7 +1217,7 @@ void analyzer::ReconstructMe() {
 	MyFill("ResidualE_vs_N_p1_p2_largelim",600,-11,100,ICne_E_diff*0.0116,600,-11,60,p1resE);
 	MyFill("ResidualE_vs_N_p1_p2_largelim",600,-11,100,ICne_E_diff*0.0116,600,-11,60,p2resE);
 
-        //Why do these exist? Never used ever again
+        //Why do these exist? Never used ever again; terminal plotting tools
         tracks.TrEvent[IsProton[0]].BeamE_p1 = tracks.TrEvent[IsProton[0]].BeamEnergy;
         tracks.TrEvent[IsProton[1]].BeamE_p2 = tracks.TrEvent[IsProton[1]].BeamEnergy;
         tracks.TrEvent[IsProton[0]].SiE_p1 = tracks.TrEvent[IsProton[0]].SiEnergy;
@@ -1298,7 +1279,7 @@ void analyzer::ReconstructMe() {
 	MyFill("BeamWA_QvalueRec_20Ne",600,-10,80,bmWAQval20Ne);
 	MyFill("BeamWA_QvalueRec_20Ne_cm",180,-1,15,bmWAQval20Ne*4/22);
     
-        //test spectra; REMOVE POST TEST?
+        //test spectra; REMOVE POST TEST? Yes
 	if((p1detid>-1 && p1detid<4) && (p2detid>-1 && p2detid<4)) {
 	  MyFill("ExEnergy_20Ne_Q3_testAnd",600,-20,50,ex20Ne);
         }
@@ -1619,8 +1600,8 @@ void analyzer::run() {
   outTree->Branch("ICne_T_diff", &ICne_T_diff, "ICne_T_diff/D");
   outTree->Branch("ICne_T_sum", &ICne_T_sum, "ICne_T_sum/D");
 
-  //rootObj->Add(protonCut); 
-  //rootObj->Add(alphaCut); RootObj->Add(needleCut);
+  rootObj->Add(protonCut); 
+  rootObj->Add(alphaCut); rootObj->Add(needleCut);
 
   ifstream inputList;
   inputList.open(inputlistname);
