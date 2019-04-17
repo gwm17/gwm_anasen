@@ -120,7 +120,7 @@ Double_t Reconstruct::WIntP(Track Tr, vector<Int_t> IsProton) {
   Double_t dz1 = DeltaZ(ejectile1.PCZ, ejectile1.SiZ, ejectile1.PCR, ejectile1.SiR);
   Double_t dz2 = DeltaZ(ejectile2.PCZ, ejectile2.SiZ, ejectile2.PCR, ejectile2.SiR);
 
-  Double_t IntPoint = IntPoint_e1/dz1 + IntPoint_e2/dz2;
+  Double_t IntPoint = (IntPoint_e1/dz1 + IntPoint_e2/dz2)/(1.0/dz1+1.0/dz2);
   return IntPoint;
 
 }
