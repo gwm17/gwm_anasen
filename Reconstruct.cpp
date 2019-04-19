@@ -149,12 +149,14 @@ void Reconstruct::Reconstruct20Ne(Track Tr, vector<Int_t> IsProton, Double_t Qva
 
   TLorentzVector Beam_LV(0.,0.,0.,0.), Target_LV(0.,0.,0.,0.), Parent_LV(0.,0.,0.,0.),
                  Recoil_LV(0.,0.,0.,0.), eject1_LV(0.,0.,0.,0.), eject2_LV(0.,0.,0.,0.),
-                 Sum_eject_LV(0.,0.,0.,0.);
+                 Sum_eject_LV(0.,0.,0.,0.), Recoil_LV_beam_rcnstrct(0.,0.,0.,0.),
+                 Beam_LV_rcnstrct(0.,0.,0.,0.), Parent_LV_beam_rcnstrct(0.,0.,0.,0.);
+
   TVector3 eject1_V(0.,0.,0.), eject2_V(0.,0.,0.), Sum_eject_V(0.,0.,0.);
 
   Target_LV.SetPxPyPzE(0.0,0.0,0.0, m_target);
-  Double_t IntPoint = 0.0, BeamE_tot = 0.0, BeamWA = 0.0, E_eject1_rxn = 0.0, E_eject2_rxn = 0.0,
-           E_eject_tot = 0.0;
+  Double_t IntPoint = 0.0, BeamE_tot = 0.0, BeamE_tot_rcnstrct = 0.0,BeamWA = 0.0, 
+           E_eject1_rxn = 0.0, E_eject2_rxn = 0.0, E_eject_tot = 0.0;
   
   if (IntPnt_flag) {
     IntPoint = WIntP(Tr, IsProton);
@@ -211,31 +213,38 @@ void Reconstruct::Reconstruct20Ne(Track Tr, vector<Int_t> IsProton, Double_t Qva
     swap(s1, s2);
   }
   Double_t Beam_KE = s2*s2;
-  if (IntPnt_flag) {recoil.BeamWA_Qvalue_20Ne = Beam_KE;}
+  if (IntPnt_flag) {
+  }
   else recoil.BeamEnergy_20Ne = Beam_KE;
    
   if (IntPnt_flag) {
     BeamWA = ELoss_beam->GetLookupEnergy(72.34, (55.0545-IntPoint));
     BeamE_tot = BeamWA + m_beam;
+    recoil.BeamWA_Qvalue_20Ne = Beam_KE;
+    BeamE_tot_rcnstrct = Beam_KE;
   } else { // in orig, was hard coded proton 0; necessary?
     BeamE_tot = Tr.TrEvent[IsProton[0]].BeamEnergy + m_beam; 
+    recoil.BeamEnergy_20Ne = Beam_KE;
   }
 
   Double_t BeamP_z = sqrt(BeamE_tot*BeamE_tot - m_beam*m_beam);
+  Double_t BeamP_z_rcnstrct = sqrt(BeamE_tot_rcnstrct*BeamE_tot_rcnstrct - m_beam*m_beam);
   Beam_LV.SetPxPyPzE(0.0,0.0, BeamP_z, BeamE_tot);
-
+  Beam_LV_rcnstrct.SetPxPyPzE(0.0,0.0, BeamP_z_rcnstrct, BeamE_tot_rcnstrct
   Parent_LV = Target_LV + Beam_LV;
+  Parent_LV_beam_rcnstrct = Target_LV + Beam_LV_rcnstrct;
   Recoil_LV = Parent_LV - Sum_eject_LV;
+  Recoil_LV_beam_rcnstrct = Parent_LV_beam_rcnstrct - Sum_eject_LV;
 
   ////So many repeats from Beam calc and 20Ne stored in recoil, are they all necessary? 
   if (IntPnt_flag) {
     recoil.IntP_20Ne = IntPoint;
     recoil.IntP_Qvalue_20Ne = IntPoint;
     recoil.BeamWA_20Ne = BeamWA;
-    recoil.Theta_Qvalue_20Ne = Recoil_LV.Theta()*180.0/TMath::Pi();
-    recoil.Phi_Qvalue_20Ne = Recoil_LV.Phi()*180.0/TMath::Pi();
-    recoil.KE_Qvalue_20Ne = Recoil_LV.E()-Recoil_LV.M();
-    recoil.Ex_Qvalue_20Ne = Recoil_LV.M() - m_recoil;
+    recoil.Theta_Qvalue_20Ne = Recoil_LV_beam_rcnstrct.Theta()*180.0/TMath::Pi();
+    recoil.Phi_Qvalue_20Ne = Recoil_LV_beam_rcnstrct.Phi()*180.0/TMath::Pi();
+    recoil.KE_Qvalue_20Ne = Recoil_LV_beam_rcnstrct.E()-Recoil_LV_beam_rcnstrct.M();
+    recoil.Ex_Qvalue_20Ne = Recoil_LV_beam_rcnstrct.M() - m_recoil;
   } else {
     recoil.BeamWA_20Ne = BeamE_tot - m_beam;
   }
