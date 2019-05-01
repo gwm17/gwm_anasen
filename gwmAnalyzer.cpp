@@ -815,7 +815,7 @@ void analyzer::CalculateResidE() {
     Double_t intp = tracks.TrEvent[i].IntPoint;
     Double_t theta = tracks.TrEvent[i].Theta;
    
-    if(detid>-1 && detid<28 && pcz>0.0 && siz>0.0 && intp>0.0 && intp<ana_length) {
+    if(detid>-1 && detid<28 && pcz>0.0 && siz>=0.0 && intp>0.0 && intp<ana_length) {
       if(protonCut->IsInside(sie, pce*sin(theta))) {
         Elastic2.ReconstructHeavy(tracks, i, recoil);
         Double_t etot = recoil.Energy_tot;
