@@ -1,20 +1,30 @@
 CC= g++
-CFLAGS= -c -Wall `root-config --cflags --glibs`
-LDFLAGS= `root-config --cflags --glibs`
-OBJECTS= track_dict.cxx LookUp.o Reconstruct.o gwmAnalyzer.o main.o
-EXECUTABLE= analyzer
+INCLDIR= ./include/
+SRCDIR= ./src/
+LIBDIR= ./lib/
+OBJDIR= ./objs/
+ROOT= `root-config --cflags --glibs`
+CFLAGS= -g -Wall $(ROOT)
+CPPFLAGS= -I$(INCLDIR) -I$(LIBDIR)
+LDFLAGS= -L$(LIBDIR) -L$(INCLDIR) $(ROOT)
+SRC= $(wildcard $(SRCDIR)*.cpp)
+OBJS= $(SRC:$(SRCDIR)%.cpp=$(OBJDIR)%.o)
+DICT= track_dict.cxx
+LIB_ITEMS= $(wildcard $(LIBDIR)*.h)
+EXE= analyzer
 
-all: $(EXECUTABLE)
+.PHONY: all clean
 
-$(EXECUTABLE): $(OBJECTS)
-	$(CC) $(LDFLAGS) $(OBJECTS) -o $@
+all: $(EXE)
 
-%.o: %.cpp
-	$(CC) -o $@ $(CFLAGS) $^
+$(EXE): $(DICT) $(OBJS)
+	$(CC) $(LDFLAGS) $^ -o $@
 
-%.cxx: Track.h CsIHit.h SiHit.h PCHit.h LinkDef_Track.h
+$(OBJDIR)%.o: $(SRCDIR)%.cpp
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@ 
+
+$(DICT): $(LIB_ITEMS)
 	rootcint -f $@ -c $^
 
-.PHONY: clean
 clean:
-	rm *.o *.cxx *.pcm
+	$(RM) $(OBJS) $(DICT) $(EXE) *.pcm
