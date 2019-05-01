@@ -230,7 +230,7 @@ void Reconstruct::Reconstruct20Ne(Track Tr, vector<Int_t> IsProton, Double_t Qva
   Double_t BeamP_z = sqrt(BeamE_tot*BeamE_tot - m_beam*m_beam);
   Double_t BeamP_z_rcnstrct = sqrt(BeamE_tot_rcnstrct*BeamE_tot_rcnstrct - m_beam*m_beam);
   Beam_LV.SetPxPyPzE(0.0,0.0, BeamP_z, BeamE_tot);
-  Beam_LV_rcnstrct.SetPxPyPzE(0.0,0.0, BeamP_z_rcnstrct, BeamE_tot_rcnstrct
+  Beam_LV_rcnstrct.SetPxPyPzE(0.0,0.0, BeamP_z_rcnstrct, BeamE_tot_rcnstrct);
   Parent_LV = Target_LV + Beam_LV;
   Parent_LV_beam_rcnstrct = Target_LV + Beam_LV_rcnstrct;
   Recoil_LV = Parent_LV - Sum_eject_LV;
