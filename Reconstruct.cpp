@@ -221,7 +221,7 @@ void Reconstruct::Reconstruct20Ne(Track Tr, vector<Int_t> IsProton, Double_t Qva
     BeamWA = ELoss_beam->GetLookupEnergy(72.34, (55.0545-IntPoint));
     BeamE_tot = BeamWA + m_beam;
     recoil.BeamWA_Qvalue_20Ne = Beam_KE;
-    BeamE_tot_rcnstrct = Beam_KE;
+    BeamE_tot_rcnstrct = Beam_KE+m_beam;
 
     Double_t BeamP_z_rcnstrct = sqrt(BeamE_tot_rcnstrct*BeamE_tot_rcnstrct - m_beam*m_beam);
     Beam_LV_rcnstrct.SetPxPyPzE(0.0,0.0, BeamP_z_rcnstrct, BeamE_tot_rcnstrct);
