@@ -202,7 +202,7 @@ void Reconstruct::Reconstruct20Ne(Track Tr, vector<Int_t> IsProton, Double_t Qva
   Double_t a = (m_beam/m_recoil-1.0);
   //Check that theta used bellow is correct theta
   Double_t b = -(sqrt(2.0*m_beam)/m_recoil)*Sum_eject_V.Mag()*cos(Sum_eject_V.Theta());
-  Double_t c = E_eject1_rxn + E_eject2_rxn + Sum_eject_V.Mag()*Sum_eject_V.Mag()/(2.0*m_ejectile) 
+  Double_t c = E_eject1_rxn + E_eject2_rxn + Sum_eject_V.Mag()*Sum_eject_V.Mag()/(2.0*m_recoil) 
                - Qvalue;
 
   Double_t s1 = (-b + sqrt(b*b-4*a*c))/(2.0*a);
@@ -222,22 +222,17 @@ void Reconstruct::Reconstruct20Ne(Track Tr, vector<Int_t> IsProton, Double_t Qva
     BeamE_tot = BeamWA + m_beam;
     recoil.BeamWA_Qvalue_20Ne = Beam_KE;
     BeamE_tot_rcnstrct = Beam_KE;
-  } else { // in orig, was hard coded proton 0; necessary?
-    BeamE_tot = Tr.TrEvent[IsProton[0]].BeamEnergy + m_beam; 
-    recoil.BeamEnergy_20Ne = Beam_KE;
-  }
 
-  Double_t BeamP_z = sqrt(BeamE_tot*BeamE_tot - m_beam*m_beam);
-  Double_t BeamP_z_rcnstrct = sqrt(BeamE_tot_rcnstrct*BeamE_tot_rcnstrct - m_beam*m_beam);
-  Beam_LV.SetPxPyPzE(0.0,0.0, BeamP_z, BeamE_tot);
-  Beam_LV_rcnstrct.SetPxPyPzE(0.0,0.0, BeamP_z_rcnstrct, BeamE_tot_rcnstrct);
-  Parent_LV = Target_LV + Beam_LV;
-  Parent_LV_beam_rcnstrct = Target_LV + Beam_LV_rcnstrct;
-  Recoil_LV = Parent_LV - Sum_eject_LV;
-  Recoil_LV_beam_rcnstrct = Parent_LV_beam_rcnstrct - Sum_eject_LV;
+    Double_t BeamP_z_rcnstrct = sqrt(BeamE_tot_rcnstrct*BeamE_tot_rcnstrct - m_beam*m_beam);
+    Beam_LV_rcnstrct.SetPxPyPzE(0.0,0.0, BeamP_z_rcnstrct, BeamE_tot_rcnstrct);
+    Parent_LV_beam_rcnstrct = Target_LV + Beam_LV_rcnstrct;
+    Recoil_LV_beam_rcnstrct = Parent_LV_beam_rcnstrct - Sum_eject_LV;
+    Double_t BeamP_z = sqrt(BeamE_tot*BeamE_tot - m_beam*m_beam);
 
-  ////So many repeats from Beam calc and 20Ne stored in recoil, are they all necessary? 
-  if (IntPnt_flag) {
+    Beam_LV.SetPxPyPzE(0.0,0.0, BeamP_z, BeamE_tot);
+    Parent_LV = Target_LV + Beam_LV;
+    Recoil_LV = Parent_LV - Sum_eject_LV;
+
     recoil.IntP_20Ne = IntPoint;
     recoil.IntP_Qvalue_20Ne = IntPoint;
     recoil.BeamWA_20Ne = BeamWA;
@@ -245,39 +240,76 @@ void Reconstruct::Reconstruct20Ne(Track Tr, vector<Int_t> IsProton, Double_t Qva
     recoil.Phi_Qvalue_20Ne = Recoil_LV_beam_rcnstrct.Phi()*180.0/TMath::Pi();
     recoil.KE_Qvalue_20Ne = Recoil_LV_beam_rcnstrct.E()-Recoil_LV_beam_rcnstrct.M();
     recoil.Ex_Qvalue_20Ne = Recoil_LV_beam_rcnstrct.M() - m_recoil;
+    recoil.theta_p1_20Ne = eject1_LV.Theta()*180.0/TMath::Pi();
+    recoil.theta_p2_20Ne = eject2_LV.Theta()*180.0/TMath::Pi();
+    recoil.Theta_20Ne = Recoil_LV.Theta()*180.0/TMath::Pi();
+    recoil.Phi_20Ne = Recoil_LV.Phi()*180.0/TMath::Pi();
+    recoil.KE_20Ne = Recoil_LV.E() - Recoil_LV.M();
+    recoil.Ex_20Ne = Recoil_LV.M() - m_recoil;
+    recoil.Delta_Phi = abs(eject1_LV.Phi()-eject2_LV.Phi());
+    if(recoil.Delta_Phi > TMath::Pi() && recoil.Delta_Phi <= 2*TMath::Pi()) {
+      recoil.Delta_Phi = 2*TMath::Pi() - recoil.Delta_Phi;
+    } 
+    recoil.Delta_Theta = abs(eject1_LV.Theta() - eject2_LV.Theta())*180.0/TMath::Pi();
+
+    Double_t m_21Na = 19553.56837;
+    TLorentzVector Na21_p1_LV = Recoil_LV + eject1_LV, Na21_p2_LV = Recoil_LV + eject2_LV;
+    Double_t Ex_p1 = Na21_p1_LV.M() - m_21Na, Ex_p2 = Na21_p2_LV.M() - m_21Na;
+
+    if (Ex_p1 > Ex_p2){
+      recoil.Ex_rec_small = Ex_p2;
+      recoil.Ex_rec_large = Ex_p1;
+    } else {
+      recoil.Ex_rec_small = Ex_p1;
+      recoil.Ex_rec_large = Ex_p2;
+    }
+
+    TLorentzVector R_21Na_p1_LV = Recoil_LV_beam_rcnstrct + eject1_LV;
+    TLorentzVector R_21Na_p2_LV = Recoil_LV_beam_rcnstrct + eject2_LV;
+    Ex_p1 = R_21Na_p1_LV.M()-m_21Na;
+    Ex_p2 = R_21Na_p2_LV.M()-m_21Na;
+    if (Ex_p1>Ex_p2) {
+      recoil.Ex_rec_qvalue_small = Ex_p2;
+      recoil.Ex_rec_qvalue_large = Ex_p1;
+    } else {
+      recoil.Ex_rec_qvalue_small = Ex_p1;
+      recoil.Ex_rec_qvalue_large = Ex_p2;
+    }
+
   } else {
+    BeamE_tot = Tr.TrEvent[IsProton[0]].BeamEnergy + m_beam; 
+    recoil.BeamEnergy_20Ne = Beam_KE;
+    Double_t BeamP_z = sqrt(BeamE_tot*BeamE_tot - m_beam*m_beam);
+
+    Beam_LV.SetPxPyPzE(0.0,0.0, BeamP_z, BeamE_tot);
+    Parent_LV = Target_LV + Beam_LV;
+    Recoil_LV = Parent_LV - Sum_eject_LV;
+
     recoil.BeamWA_20Ne = BeamE_tot - m_beam;
+    recoil.theta_p1_20Ne = eject1_LV.Theta()*180.0/TMath::Pi();
+    recoil.theta_p2_20Ne = eject2_LV.Theta()*180.0/TMath::Pi();
+    recoil.Theta_20Ne = Recoil_LV.Theta()*180.0/TMath::Pi();
+    recoil.Phi_20Ne = Recoil_LV.Phi()*180.0/TMath::Pi();
+    recoil.KE_20Ne = Recoil_LV.E() - Recoil_LV.M();
+    recoil.Ex_20Ne = Recoil_LV.M() - m_recoil;
+    recoil.Delta_Phi = abs(eject1_LV.Phi()-eject2_LV.Phi());
+    if(recoil.Delta_Phi > TMath::Pi() && recoil.Delta_Phi <= 2*TMath::Pi()) {
+      recoil.Delta_Phi = 2*TMath::Pi() - recoil.Delta_Phi;
+    } 
+    recoil.Delta_Theta = abs(eject1_LV.Theta() - eject2_LV.Theta())*180.0/TMath::Pi();
+
+    Double_t m_21Na = 19553.56837;
+    TLorentzVector Na21_p1_LV = Recoil_LV + eject1_LV, Na21_p2_LV = Recoil_LV + eject2_LV;
+    Double_t Ex_p1 = Na21_p1_LV.M() - m_21Na, Ex_p2 = Na21_p2_LV.M() - m_21Na;
+
+    if (Ex_p1 > Ex_p2){
+      recoil.Ex_rec_small = Ex_p2;
+      recoil.Ex_rec_large = Ex_p1;
+    } else {
+      recoil.Ex_rec_small = Ex_p1;
+      recoil.Ex_rec_large = Ex_p2;
+    }
   }
-
-  recoil.theta_p1_20Ne = eject1_LV.Theta()*180.0/TMath::Pi();
-  recoil.theta_p2_20Ne = eject2_LV.Theta()*180.0/TMath::Pi();
-  recoil.Theta_20Ne = Recoil_LV.Theta()*180.0/TMath::Pi();
-  recoil.Phi_20Ne = Recoil_LV.Phi()*180.0/TMath::Pi();
-  recoil.KE_20Ne = Recoil_LV.E() - Recoil_LV.M();
-  recoil.Ex_20Ne = Recoil_LV.M() - m_recoil;
-
-  recoil.Delta_Phi = abs(eject1_LV.Phi()-eject2_LV.Phi());
-  if(recoil.Delta_Phi > TMath::Pi() && recoil.Delta_Phi <= 2*TMath::Pi()) {
-    recoil.Delta_Phi = 2*TMath::Pi() - recoil.Delta_Phi;
-  } 
-  recoil.Delta_Theta = abs(eject1_LV.Theta() - eject2_LV.Theta())*180.0/TMath::Pi();
-
-  Double_t m_21Na = 19553.56837;
-  TLorentzVector Na21_p1_LV = Recoil_LV + eject1_LV, Na21_p2_LV = Recoil_LV + eject2_LV;
-  Double_t Ex_p1 = Na21_p1_LV.M() - m_21Na, Ex_p2 = Na21_p2_LV.M() - m_21Na;
-
-  if (Ex_p1 > Ex_p2){
-    recoil.Ex_rec_small = Ex_p2;
-    recoil.Ex_rec_qvalue_small = Ex_p2;
-    recoil.Ex_rec_large = Ex_p1;
-    recoil.Ex_rec_qvalue_large = Ex_p1;
-  } else {
-    recoil.Ex_rec_small = Ex_p1;
-    recoil.Ex_rec_qvalue_small = Ex_p1;
-    recoil.Ex_rec_large = Ex_p2;
-    recoil.Ex_rec_qvalue_large = Ex_p2;
-  }
-
 }
 
 void Reconstruct::ReconstructHeavy_Qvalue(Double_t Qvalue, Track Tr, Int_t proton, 
