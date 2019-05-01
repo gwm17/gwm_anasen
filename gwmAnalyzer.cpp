@@ -74,18 +74,14 @@ void analyzer::SetFlag(string flagName) {
  *Cuts should be stored in a file and feed through this function
  *Cuts can all be in one file or in many files, just make sure names match
  */
-void analyzer::getCut() {
-  string protonName, alphaName, needleName;
-  cout<<"Enter name of the proton cut file: ";
-  cin>>protonName;
-  cout<<"Enter name of the alpha cut file: ";
-  cin>>alphaName;
-  cout<<"Enter name of the needle cut file: ";
-  cin>>needleName;
-  char protonname[100], alphaname[100], needlename[100]; 
-  strcpy(protonname, protonName.c_str());
-  strcpy(alphaname, alphaName.c_str());
-  strcpy(needlename, needleName.c_str());
+void analyzer::getCut(string pcutfile, string acutfile, string ncutfile) {
+  cout<<"Proton cut file: "<<pcutfile<<endl;
+  cout<<"Alpha cut file: "<<acutfile<<endl;
+  cout<<"Needle cut file: "<<ncutfile<<endl;
+  char protonname[pcutfile.length()], alphaname[acutfile.length()], needlename[ncutfile.length()];
+  strcpy(protonname, pcutfile.c_str());
+  strcpy(alphaname, acutfile.c_str());
+  strcpy(needlename, ncutfile.c_str());
 
   TFile *protonfile = new TFile(protonname, "READ");
   protonCut = (TCutG*) protonfile->Get("protons_edetheta_q3r1_run2007_2044_18Necut_09132018");
@@ -1550,7 +1546,6 @@ void analyzer::run() {
   PC.ReadHit = 0;
   CsI.ReadHit = 0;
 
-  if(cutFlag) getCut();
 
   if(ReadPCWire) {
     WireRadii = GetPCWireRadius();
@@ -1608,6 +1603,13 @@ void analyzer::run() {
   if(!inputList.is_open()){
     cout<<"List of rootfiles could not be opened!"<<endl;
     exit(EXIT_FAILURE);
+  }
+  if(cutFlag) {
+    string protonCutfile, alphaCutfile, needleCutfile;
+    getline(inputList, protonCutfile);
+    getline(inputList, alphaCutfile);
+    getline(inputList, needleCutfile);
+    getCut(protonCutfile, alphaCutfile, needleCutfile);
   }
   string rootName;
   char rootname[100];

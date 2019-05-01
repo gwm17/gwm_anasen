@@ -58,7 +58,7 @@ class analyzer {
     Int_t FindGoodCsI(Double_t phi, CsIHit& CsI);
     Int_t FindMaxSi(Double_t phi, SiHit& Si);
     vector<Int_t> FindGoodCsI_Vector(Double_t phi, CsIHit& CsI);
-    void getCut();
+    void getCut(string pcutfile, string acutfile, string ncutfile);
     void recoilReset();
     bool MCP_RF();
     void Track1();
