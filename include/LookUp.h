@@ -21,8 +21,8 @@ class LookUp{
   public:
 
     LookUp();
-    LookUp(string Eloss_file, Double_t InputMass);
     ~LookUp();
+    LookUp(string Eloss_file, Double_t InputMass);
     Double_t GetEnergyLoss(Double_t initial_energy, Double_t distance);
     Double_t GetInitialEnergy(Double_t FinalEnergy, Double_t PathLength, Double_t StepSize);
     Double_t GetFinalEnergy(Double_t InitialEnergy, Double_t PathLength, Double_t StepSize);

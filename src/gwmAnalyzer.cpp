@@ -2,7 +2,7 @@
  *Analyzer class for ANASEN Detector in Active Target mode. Contains all functions necessary to 
  *sort data and calculate physical values. Will do everything from making all of the tracking data
  *up to calling the experiment dependant reconstruction and sorting and storing all data. Current
- *asks user for the name of a data list file, an output file, and three cut files
+ *asks user for the name of a data list file and an output file
  *
  *Gordon M. -- April 2019
  *Based on previous versions written by M. Anastasiou, N. Rijal, J. Parker, et al
@@ -14,18 +14,22 @@ using namespace std;
 //Constructor
 analyzer::analyzer() {
 
+  be7eloss_name = "./srim/7be_in_d2_290torr.eloss";
+  he4eloss_name = "./srim/4he_in_d2_400torr.eloss";
+  he3eloss_name = "./srim/3he_in_d2_400torr.eloss";
+  peloss_name = "./srim/p_in_d2_400torr.eloss";
+  deloss_name = "./srim/d_in_d2_400torr.eloss";
+
   //Set all of the flags
   PCPlots = 0;
   PCPlots_2 = 0;
   Beam_and_Eloss = 0;
   FillTree = 0;
   FillEdE_cor = 0;
-  CheckBasic = 0;
   MCP_RF_Cut = 0;
   ReadPCWire = 0;
   PCWireCal = 0;
   ResidualEnergy_Calc = 0;
-  ResidualEnergy_Calc_20Ne = 0;
   Reconstruction_Session = 0;
   Elastic_Scat_Alpha = 0;
   cutFlag = 0;
@@ -35,9 +39,9 @@ analyzer::analyzer() {
 //Destructor
 analyzer::~analyzer() {
   //free dynamic memory
-  delete Ne18_eloss;
-  delete Ne20_eloss;
-  delete Na21_eloss;
+  delete be7_eloss;
+  delete deuteron_eloss;
+  delete he3_eloss;
   delete proton_eloss;
   delete alpha_eloss;
 }
@@ -54,7 +58,6 @@ void analyzer::SetFlag(string flagName) {
   else if (flagName == "beamandeloss") Beam_and_Eloss = 1;
   else if (flagName == "filltree") FillTree = 1;
   else if (flagName == "filledecor") FillEdE_cor = 1;
-  else if (flagName == "checkbasic") CheckBasic = 1;
   else if (flagName == "mcprfcut") MCP_RF_Cut = 1;
   else if (flagName == "readpcwire") ReadPCWire = 1;
   else if (flagName == "pcwirecal") PCWireCal = 1;
@@ -74,30 +77,40 @@ void analyzer::SetFlag(string flagName) {
  *Cuts should be stored in a file and feed through this function
  *Cuts can all be in one file or in many files, just make sure names match
  */
-void analyzer::getCut() {
-  string protonName, alphaName, needleName;
-  cout<<"Enter name of the proton cut file: ";
-  cin>>protonName;
-  cout<<"Enter name of the alpha cut file: ";
-  cin>>alphaName;
-  cout<<"Enter name of the needle cut file: ";
-  cin>>needleName;
-  char protonname[100], alphaname[100], needlename[100]; 
-  strcpy(protonname, protonName.c_str());
-  strcpy(alphaname, alphaName.c_str());
-  strcpy(needlename, needleName.c_str());
+void analyzer::getCut(string pcutfile, string acutfile, string he3cutfile, string dcutfile, string                      jacutfile) {
+  cout<<"Proton cut file: "<<pcutfile<<endl;
+  cout<<"Alpha cut file: "<<acutfile<<endl;
+  cout<<"He3 cut file: "<<he3cutfile<<endl;
+  cout<<"Deuteron cut file: "<<dcutfile<<endl;
+  cout<<"Joined Alpha cut file: "<<jacutfile<<endl;
+  char protonname[pcutfile.length()], alphaname[acutfile.length()], he3name[he3cutfile.length()];
+  char deuteronname[dcutfile.length()], janame[jacutfile.length()];
+
+  strcpy(protonname, pcutfile.c_str());
+  strcpy(alphaname, acutfile.c_str());
+  strcpy(he3name, he3cutfile.c_str());
+  strcpy(deuteronname, dcutfile.c_str());
+  strcpy(janame, jacutfile.c_str());
 
   TFile *protonfile = new TFile(protonname, "READ");
-  protonCut = (TCutG*) protonfile->Get("protons_edetheta_q3r1_run2007_2044_18Necut_09132018");
-  protonfile->Close();
+  protonCut = (TCutG*) protonfile->Get("CUTG");
+  protonCut->SetName("protonCut");
 
   TFile *alphafile = new TFile(alphaname, "READ");
-  alphaCut = (TCutG*) alphafile->Get("alphas_edetheta_q3r1_run2007_2044_18Necut_09132018");
-  alphafile->Close();
+  alphaCut = (TCutG*) alphafile->Get("CUTG");
+  alphaCut->SetName("alphaCut");
 
-  TFile *needlefile = new TFile(needlename, "READ");
-  needleCut = (TCutG*) needlefile->Get("resEn_vs_neEn_348Torr_PCZfactor_09202019");
-  needlefile->Close();
+  TFile *he3file = new TFile(he3name, "READ");
+  he3Cut = (TCutG*) he3file->Get("CUTG");
+  he3Cut->SetName("he3Cut");
+
+  TFile *deutfile = new TFile(deuteronname, "READ");
+  deutCut = (TCutG*) deutfile->Get("CUTG");
+  deutCut->SetName("deutCut");
+
+  TFile *jafile = new TFile(janame, "READ");
+  joinedAlphaCut = (TCutG*) jafile->Get("CUTG");
+  joinedAlphaCut->SetName("joinedAlphaCut");
 }
 
 /*recoilReset()
@@ -105,40 +118,31 @@ void analyzer::getCut() {
  *a method for setting the class instance of RecoilEvent back to zero
  *Was originally contained in the Track class
  */
-void analyzer::recoilReset() {
+void analyzer::recoilReset(RecoilEvent &recoil) {
   recoil.IntPoint = -10;
-  recoil.BeamEnergy = -10;
-  recoil.BeamEnergy_20Ne = -10;
   recoil.SiEnergy_tot = -10;
   recoil.SiEnergy_calc = -10;
   recoil.PCEnergy_tot = -10;
-  recoil.Energy_tot = -10;
+  recoil.Energy_eject_tot = -10;
   recoil.Theta = -10;
-  recoil.Theta_20Ne = -10;
-  recoil.Theta_Qvalue_20Ne = -10;
   recoil.Phi = -10;
-  recoil.Phi_20Ne = -10;
-  recoil.Phi_Qvalue_20Ne = -10;
-  recoil.KE = -10;
-  recoil.Ex = -10;
-  recoil.KE_20Ne = -10;
-  recoil.KE_Qvalue_20Ne = -10;
-  recoil.Ex_20Ne = -10;
-  recoil.Ex_Qvalue_20Ne = -10;
-  recoil.Ex_rec_small = -10;
-  recoil.Ex_rec_large = -10;
-  recoil.Ex_rec_qvalue_small = -10;
-  recoil.Ex_rec_qvalue_large = -10;
+  recoil.KE_recoil = -10;
+  recoil.Ex_recoil = -10;
+  recoil.Ex_recoil_2a = -10;
+  recoil.Ex_recoil_a1p = -10;
+  recoil.Ex_recoil_a2p = -10;
+  recoil.Ex_temp_small = -10;
+  recoil.Ex_temp_large = -10;
+  recoil.Ex_temp_qvalue_small = -10;
+  recoil.Ex_temp_qvalue_large = -10;
   recoil.Delta_Theta = -10;
   recoil.Delta_Phi = -10;
-  recoil.BeamWA_20Ne = -10;
-  recoil.BeamWA_Qvalue_20Ne = -10;
-  recoil.IntP_20Ne = -10;
-  recoil.IntP_Qvalue_20Ne = -10;
-  recoil.theta_p1_20Ne = -10;
-  recoil.theta_p2_20Ne = -10;
-  recoil.Ex_21Na = -10;
-  recoil.Beam_Qv_21Na = -10;
+  recoil.BeamKE_WAIntP = -10;
+  recoil.theta_eject1 = -10;
+  recoil.theta_eject2 = -10;
+  recoil.BeamKE = -10;
+  recoil.BeamKE_eject = -10;
+  recoil.recoil_mass_sq = -10;
 }
 
 /*GetPCWireRadius()
@@ -220,6 +224,8 @@ Double_t analyzer::PhiDiff(Float_t phi1, Float_t phi2) {
 Int_t analyzer::FindMaxPC(Double_t phi, PCHit &PC) {//Pretty sure the PCHit doesn't need ref
   
   Int_t MaxPCindex = -1;
+  Int_t NexttoMaxPCindex = -1;
+  Double_t NexttoMaxPC = -10;
   Double_t MaxPC = -10;
 
   //phi window
@@ -232,11 +238,83 @@ Int_t analyzer::FindMaxPC(Double_t phi, PCHit &PC) {//Pretty sure the PCHit does
       if( PC.pc_obj.Energy >= MaxPC) { 
         MaxPC = PC.pc_obj.Energy;
         MaxPCindex = k;
+      } else if (PC.pc_obj.Energy >= NexttoMaxPC) {
+        NexttoMaxPCindex = k;
+        NexttoMaxPC = PC.pc_obj.Energy;
       } 
     }
   }
+  if (NexttoMaxPCindex>0 && (PhiDiff((*PC.ReadHit)[MaxPCindex].PhiW, phi) >
+                             PhiDiff((*PC.ReadHit)[NexttoMaxPCindex].PhiW,phi))) {
+    return NexttoMaxPCindex;
+  }
   return MaxPCindex;
 
+}
+
+/*RecoverTrack1()
+ *This method is for recovering a Track of type 1 from a Track of type 2 when there are two 
+ *tracks that are so close together that the PC cannot distinguish them. When the tracks are this
+ *close the sorting will assign one of the Si hits as a track1 with all of the PC info, along with
+ *the individual Si info, while the other Si hit will be left as a track2 with only Si info
+ */
+bool analyzer::RecoverTrack1(TrackEvent track1, TrackEvent &track2) {
+  if(track1.TrackType == 1 && track2.TrackType == 2) {
+    Double_t pce1 = track1.PCEnergy;
+    Double_t pcz1 = track1.PCZ;
+    Double_t pcr1 = track1.PCR;
+    Double_t wid1 = track1.WireID;
+    Double_t down1 = track1.Down;
+    Double_t up1 = track1.Up;
+    Double_t downV1 = track1.DownVoltage;
+    Double_t upV1 = track1.UpVoltage;
+    Double_t siz2 = track2.SiZ;
+    Double_t sir2 = track2.SiR;
+   
+    Double_t m = (pcr1-sir2)/(pcz1-siz2);
+    if(m == 0.0) {
+      return false;
+    }
+    Double_t b =  pcr1-m*pcz1;
+    Double_t intp = -b/m;
+    
+    Double_t theta, pl;      
+    if((intp - siz2)>0) {
+      theta = atan(sir2/(intp-siz2));
+      pl = sir2/sin(theta);
+    } else if ((intp-siz2) < 0) {
+      theta = TMath::Pi() + atan(sir2/(intp-siz2));
+      pl = sir2/sin(theta);
+    } else { 
+      theta = TMath::Pi()/2.0;
+      pl = sir2;
+    }
+    float length_check = ana_length - intp;
+    Double_t be;
+    if(length_check>0.0 && length_check<ana_length) {   
+      be = be7_eloss->GetLookupEnergy(BeamE, length_check);
+    } else {
+      return false;
+    }
+    
+    track2.PCEnergy = pce1;
+    track2.PCZ = pcz1;
+    track2.PCR = pcr1;
+    track2.WireID = wid1;
+    track2.Down = down1;
+    track2.Up = up1;
+    track2.DownVoltage = downV1;
+    track2.UpVoltage = upV1;
+    track2.IntPoint = intp;
+    track2.Theta = theta;
+    track2.PathLength = pl;
+    track2.BeamEnergy = be;
+    track2.TrackType = 1;
+    return true;
+  } else {
+    cout<<"Error in RecoverTrack1! track1 must be type 1 and track2 must be type 2"<<endl;
+    return false;
+  }
 }
 
 /*MCP_RF()
@@ -246,18 +324,6 @@ Int_t analyzer::FindMaxPC(Double_t phi, PCHit &PC) {//Pretty sure the PCHit does
  */
 bool analyzer::MCP_RF() {
 
-  ICne_E_sum = input_ICne_E_sum;
-  ICne_E_diff = input_ICne_E_diff;
-  ICne_T_diff = input_ICne_T_diff;
-  ICne_T_sum = input_ICne_T_sum;
-  ICne_E_diff_cal = 0.0116*ICne_E_diff;
-  MyFill("ICne_En_sum",1024,0,4096,ICne_E_sum);
-  MyFill("ICne_En_diff",1024,0,4096,ICne_E_diff);
-  MyFill("ICne_En_diff_cal",200,0,70,ICne_E_diff_cal);
-  MyFill("ICne_Ti_diff",1024,0,4096,ICne_T_diff);
-  MyFill("ICne_Ti_sum",1024,0,4096,ICne_T_sum);
-  MyFill("Sum_vs_Diff_Time_ICne",256,0,4096,ICne_T_diff,256,0,4096,ICne_T_sum);
-  MyFill("Energy_vs_Time_Diff_ICne",256,0,4096,ICne_T_diff,256,0,4096,ICne_E_diff);
 
   Double_t correct = 1.004009623;
   MCPTime = input_MCPTime;
@@ -268,14 +334,11 @@ bool analyzer::MCP_RF() {
   MyFill("TDC2",1024,1,4096,TDC2);
   MyFill("Timing",600,0,600,fmod((MCPTime*correct-RFTime),545));
   if (MCP_RF_Cut) {
-    if (MCPTime>0 && RFTime>0) {
+    if ((MCPTime>2800&&MCPTime<3200) && RFTime>0) {
       float wrap_val = fmod((MCPTime*correct-RFTime), 545);
-      if((wrap_val<40 || wrap_val>100) && (wrap_val<310 || wrap_val>370)){
+      if((wrap_val<47 || wrap_val>118) && (wrap_val<320 || wrap_val>384)){
         return false;
       } 
-      if (MCPTime<2870 || MCPTime>3050) {
-        return false;
-      }
     } else {
         return false;
     }
@@ -285,13 +348,6 @@ bool analyzer::MCP_RF() {
   MyFill("TDC2_cut",1000,1,5000,TDC2);
   MyFill("Timing_cut",600,0,600,fmod((MCPTime*correct-RFTime),545));
   
-  MyFill("Timing_cut_ICne_En_sum",1024,0,4096,ICne_E_sum);
-  MyFill("Timing_cut_ICne_En_diff",1024,0,4096,ICne_E_diff);
-  MyFill("Timing_cut_ICne_En_diff_cal",200,0,70,ICne_E_diff_cal);
-  MyFill("Timing_cut_ICne_Ti_diff",1024,0,4096,ICne_T_diff);
-  MyFill("Timing_cut_ICne_Ti_sum",1024,0,4096,ICne_T_sum);
-  MyFill("Timing_cut_Sum_vs_Diff_Time_ICne",256,0,4096,ICne_T_diff,256,0,4096,ICne_T_sum);
-  MyFill("Timing_cut_Energy_vs_Time_Diff_ICne",256,0,4096,ICne_T_diff,256,0,4096,ICne_E_diff);
   return true;
 }
 
@@ -346,11 +402,11 @@ void analyzer::Track1() {
       trackhit.Up = pchit.Up;
       trackhit.DownVoltage = pchit.DownVoltage;
       trackhit.UpVoltage = pchit.UpVoltage;
-      if(trackhit.WireID==6 || trackhit.WireID==12 || trackhit.WireID==17) {
+      if(trackhit.WireID==6) {
         trackhit.PCZ = -10.0;
         trackhit.PCEnergy = -10.0;
         continue;
-      }
+      } 
       
       PCGoodEnergy[trackhit.WireID] = trackhit.PCEnergy;
       PCGoodPCZ[trackhit.WireID] = trackhit.PCZ;
@@ -492,69 +548,62 @@ void analyzer::PCPlotting() {
 /*TrackCalc()
  *Method of checks! Goal is to run and make sure that all of the tracking info
  *is good up to this point (which should be MCPRF, Tracks 1,2,3). Calculates and stores
- *the interaction point and beam energy for each event 
- *IMPROVEMENT: CheckBasic should probably be removed, these tests should be done everytime,
- *and removing the extra if statements would help boost the speed (probably not major, but every
- *little bit helps)
- *OPTIMIZATION: Look at how some of the later methods work and make this like those. Probably is
- *more readable/clean to locally store all of these track values at the top of the loop instead
- *of constantly reaccesing the same TrackEvent (Probably no performance gain tho :( )
+ *the interaction point and beam energy for each event calculated purely through tracking
  */
 void analyzer::TrackCalc() {
 
   for(int i=0; i<tracks.NTracks1; i++) {
-    if(CheckBasic) {
-      if(tracks.TrEvent[i].SiZ < 0.0 || tracks.TrEvent[i].PCZ < 0.0) {
-        tracks.TrEvent[i].PCZ = -100;
-        tracks.TrEvent[i].SiZ = -100;
-        continue;
-      }
-      if(tracks.TrEvent[i].PCR>4.0 || tracks.TrEvent[i].PCR<3.5) {
-        tracks.TrEvent[i].PCR = -100;
-        continue;
-      }
-      if(tracks.TrEvent[i].SiR>11.0 || tracks.TrEvent[i].SiR<4.0) {
-        tracks.TrEvent[i].SiR = -100;
-        continue;
-      }
+    Double_t siz = tracks.TrEvent[i].SiZ;
+    Double_t pcz = tracks.TrEvent[i].PCZ;
+    Double_t pcr = tracks.TrEvent[i].PCR;
+    Double_t sir = tracks.TrEvent[i].SiR;
+    
+    if(siz < 0.0 || pcz < 0.0) {
+      tracks.TrEvent[i].PCZ = -100;
+      tracks.TrEvent[i].SiZ = -100;
+      continue;
+    }
+    if(pcr>4.0 || pcr<3.5) {
+      tracks.TrEvent[i].PCR = -100;
+      continue;
+    }
+    if(sir>11.0 || sir<4.0) {
+      tracks.TrEvent[i].SiR = -100;
+      continue;
     }
     
-    Double_t m = (tracks.TrEvent[i].PCR-tracks.TrEvent[i].SiR)/
-                 (tracks.TrEvent[i].PCZ-tracks.TrEvent[i].SiZ);
-    
-    if(CheckBasic && (m==0 || tracks.TrEvent[i].PCZ<=0 || tracks.TrEvent[i].SiZ<0 || 
-      tracks.TrEvent[i].SiR<=0 || (tracks.TrEvent[i].PCZ-tracks.TrEvent[i].SiZ) ==0)) {
+    Double_t m = (pcr-sir)/(pcz-siz);
+    if(m==0 || pcz<=0 || siz<0 || sir<=0 || (pcz-siz) ==0) {
       cout<<"m for Interaction Point is zero "<<m<<endl;
       continue;
     }
 
     Double_t b = (tracks.TrEvent[i].PCR - m*tracks.TrEvent[i].PCZ);
     tracks.TrEvent[i].IntPoint = -b/m;
-
-    if(CheckBasic && (tracks.TrEvent[i].IntPoint<0.0 || tracks.TrEvent[i].IntPoint>55.0)) {
+    Double_t intp = tracks.TrEvent[i].IntPoint;
+    if(intp<0.0 || intp>55.0) {
       tracks.TrEvent[i].IntPoint = -100;
       continue;
     }
     
-    if((tracks.TrEvent[i].IntPoint - tracks.TrEvent[i].SiZ)>0) {
-      tracks.TrEvent[i].Theta = atan(tracks.TrEvent[i].SiR/
-                                     (tracks.TrEvent[i].IntPoint-tracks.TrEvent[i].SiZ));
-      tracks.TrEvent[i].PathLength = tracks.TrEvent[i].SiR/sin(tracks.TrEvent[i].Theta);
-    } else if ((tracks.TrEvent[i].IntPoint-tracks.TrEvent[i].SiZ) < 0) {
-      tracks.TrEvent[i].Theta = TMath::Pi() + atan(tracks.TrEvent[i].SiR/
-                                (tracks.TrEvent[i].IntPoint-tracks.TrEvent[i].SiZ));
-      tracks.TrEvent[i].PathLength = tracks.TrEvent[i].SiR/sin(tracks.TrEvent[i].Theta);
+    if((intp - siz)>0) {
+      tracks.TrEvent[i].Theta = atan(sir/(intp-siz));
+      Double_t theta = tracks.TrEvent[i].Theta;
+      tracks.TrEvent[i].PathLength = sir/sin(theta);
+    } else if ((intp-siz) < 0) {
+      tracks.TrEvent[i].Theta = TMath::Pi() + atan(sir/(intp-siz));
+      Double_t theta = tracks.TrEvent[i].Theta;
+      tracks.TrEvent[i].PathLength = sir/sin(theta);
     } else { 
       tracks.TrEvent[i].Theta = TMath::Pi()/2.0;
-      tracks.TrEvent[i].PathLength = tracks.TrEvent[i].SiR;
+      tracks.TrEvent[i].PathLength = sir;
     }
 
     if (Beam_and_Eloss) {
-      float length_check = ana_length - tracks.TrEvent[i].IntPoint;
+      float length_check = ana_length - intp;
       if(length_check>0.0 && length_check<ana_length) {   
-        tracks.TrEvent[i].BeamEnergy = Ne18_eloss->GetLookupEnergy(BeamE, length_check);
-        if(CheckBasic && (tracks.TrEvent[i].BeamEnergy<0.0 || 
-                          tracks.TrEvent[i].BeamEnergy>BeamE)){
+        tracks.TrEvent[i].BeamEnergy = be7_eloss->GetLookupEnergy(BeamE, length_check);
+        if(tracks.TrEvent[i].BeamEnergy<0.0 || tracks.TrEvent[i].BeamEnergy>BeamE){
           tracks.TrEvent[i].BeamEnergy = -100.0;
           continue;
         }
@@ -564,7 +613,7 @@ void analyzer::TrackCalc() {
 }
 
 /*PCWireCalibration()
- *Option for calibrating pc wires; 
+ *Option for looking at pc wires calibration; 
  *Makes a very large number of plots, so only run if necessary
  *Requires gold_pos, which has to be entered manually
  */
@@ -575,7 +624,7 @@ void analyzer::PCWireCalibration() {
   Double_t r2_Emin = 10.3;
   Double_t r2_Emax = 11.2;
 
-  Double_t gold_pos = 0.0; //set by experiment
+  Double_t gold_pos = 28.9; //set by experiment
 
   for (int i=0; i<tracks.NTracks1; i++) {
     if((tracks.TrEvent[i].DetID>-1 && tracks.TrEvent[i].DetID<16 && 
@@ -699,7 +748,7 @@ void analyzer::EdEcor() {
     Double_t theta = tracks.TrEvent[i].Theta;
     Int_t detid = tracks.TrEvent[i].DetID;
 
-    MyFill("BeamEnergy_vs_IntPoint",100,-20,80,intp,100,-10,90,be);
+    MyFill("BeamEnergy_vs_IntPoint",200,-10,60,intp,200,-10,30,be);
     MyFill("BeamEnergy",100,-10,90,be);
     MyFill("E_de",200,-1,35,sie,200,-0.01,1.5,pce);
     MyFill("E_de_corrected_ALL",200,-1,35,sie,200,-0.01,1.5,pce *sin(theta));
@@ -802,12 +851,18 @@ void analyzer::PCPlotting2() {
 /*CalculateResidE()
  *First reconstruction method
  *Uses ReconstructHeavy from Reconstruction class
- *Focuses on Energy of the residual
+ *Focuses on Energy of the recoil; single ejectile reconstruction
  */
-void analyzer::CalculateResidE() {
-  Reconstruct Elastic2(M_18Ne, M_alpha, M_p, M_21Na);
-  Elastic2.ELoss_light = proton_eloss;
-  Elastic2.ELoss_beam = Ne18_eloss;
+void analyzer::CalcRecoilE() {
+  //Make a be8 calculator
+  Reconstruct be8_calc(m_7be, m_d, m_p, m_8be);
+  be8_calc.ELoss_eject = proton_eloss;
+  be8_calc.ELoss_beam = be7_eloss;
+  
+  //Make a li6 calculator
+  Reconstruct li6_calc(m_7be, m_d, m_3he, m_6li);
+  li6_calc.ELoss_eject = he3_eloss;
+  li6_calc.ELoss_beam = be7_eloss; 
 
   for(int i=0; i<tracks.NTracks1; i++) {
     Int_t detid = tracks.TrEvent[i].DetID;
@@ -817,595 +872,449 @@ void analyzer::CalculateResidE() {
     Double_t pce = tracks.TrEvent[i].PCEnergy;
     Double_t be = tracks.TrEvent[i].BeamEnergy;
     Double_t intp = tracks.TrEvent[i].IntPoint;
+    Double_t siphi = tracks.TrEvent[i].SiPhi;
     Double_t theta = tracks.TrEvent[i].Theta;
-   
-    if(detid>-1 && detid<28 && pcz>0.0 && siz>0.0 && intp>0.0 && intp<ana_length) {
-      if(protonCut->IsInside(sie, pce*sin(theta))) {
-        Elastic2.ReconstructHeavy(tracks, i, recoil);
-        Double_t etot = recoil.Energy_tot;
-        Double_t ke = recoil.KE;
-        Double_t rtheta = recoil.Theta;
+    Double_t pcphi = tracks.TrEvent[i].PCPhi;
+    Double_t sir = tracks.TrEvent[i].SiR;
 
-	MyFill("SiEnergy_tot_vs_Needle_4vec",256,0,4096,ICne_E_diff,300,-0.1,30,etot);
-	MyFill("SiEnergy_tot_vs_NeedleCal_4vec",256,0,70,ICne_E_diff_cal,300,-0.1,30,etot);
-	MyFill("SiEnergy_tot_vs_RecoilEn_4vec",300,-0.1,80,ke,300,-0.1,30,etot);
-	MyFill("LightTheta_vs_RecoilTheta",300,-0.1,180,rtheta,300,-0.1,180,theta*rads2deg);
-	MyFill("RecoilEnergy_vs_Theta_4vec",300,-0.1,180,rtheta,300,-0.1,80,ke);
-	MyFill("RecoilEnergy_vs_Needle_4vec",256,0,4096,ICne_E_diff,300,-0.1,80,ke);
-	MyFill("RecoilEnergy_vs_NeedleCal_4vec",256,0,70,ICne_E_diff_cal,300,-0.1,80,ke);
-	MyFill("RecoilEnergy_vs_IntP_4vec",300,-0.1,60,intp,300,-0.1,80,ke);
-        
-        Float_t r_fullpath, r_IntPtoNeedle, ResidE_recoil;
-        if(rtheta != 0.0 && rtheta != 90.0 && rtheta != 180.0) { 
-          r_fullpath = 2.2/sin(rtheta/rads2deg); //2.2? radius of ic
-          if(intp > 17.8) {
-            r_IntPtoNeedle  = (intp-17.8)/cos(rtheta/rads2deg);
-          }
-        }
-        if(intp<=17.8) {
-          Float_t E_fullpath = Na21_eloss->GetLookupEnergy(ke, r_fullpath);
-          Float_t BeamE_atneedle = Ne18_eloss->GetLookupEnergy(BeamE, (ana_length-17.8));
-          Float_t deltaBeamE = BeamE_atneedle - be;
-
-          if(E_fullpath <= 0.0) {
-            ResidE_recoil = ke+deltaBeamE;
-            if(detid>-1 && detid<4) {
-              MyFill("ResidualE_vs_Needle_4vec_Q3_insideVol_FullLoss",256,0,4096,ICne_E_diff,
-                     300,-11,50,ResidE_recoil);
-            }
-            if(detid>3 && detid<16) {
-              MyFill("ResidualE_vs_Needle_4vec_R1_insideVol_FullLoss",256,0,4096,ICne_E_diff,
-                     300,-11,50,ResidE_recoil);
-            }
-          } else {
-            ResidE_recoil = ke-E_fullpath+deltaBeamE;
-            if(detid>-1 && detid<4) {
-              MyFill("ResidualE_vs_Needle_4vec_Q3_insideVol_someLoss",256,0,4096,ICne_E_diff,
-                     300,-11,50,ResidE_recoil);
-            }
-            if(detid>3 && detid<16) {
-              MyFill("ResidualE_vs_Needle_4vec_R1_insideVol_someLoss",256,0,4096,ICne_E_diff,
-                     300,-11,50,ResidE_recoil);
-            }
-          }
-          
-          MyFill("ReisdualE_Recoil_vs_Needle_NeedleVolume",256,0,4096,ICne_E_diff,
-                  300,-11,50,ResidE_recoil); 
-        } else{
-          Float_t E_needlestart = Na21_eloss->GetLookupEnergy(ke, r_IntPtoNeedle);
-          if(E_needlestart <= 0.0) {
-            ResidE_recoil = -10.0;
-          } else if (r_fullpath<r_IntPtoNeedle) {
-            ResidE_recoil = -5.0;
-          } else {
-            Float_t Efinal = Na21_eloss->GetLookupEnergy(E_needlestart,
-                                                         (r_fullpath-r_IntPtoNeedle));
-            if(Efinal <= 0.0) {
-              ResidE_recoil = E_needlestart;
-            } else{
-              ResidE_recoil = E_needlestart-Efinal;
-            }
-          }
-          MyFill("ResidualE_recoil_vs_Needle_outside_NeedleVol",256,0,4096,ICne_E_diff,
-                                                                300,-11,50,ResidE_recoil);
-        } 
-        tracks.TrEvent[i].ResidualEn = ResidE_recoil;
-        
-	MyFill("ResidualE_vs_Path_4vec",300,-0.1,60,r_fullpath,300,-11,50,ResidE_recoil);
-	MyFill("ResidualE_vs_IntP_4vec",300,-0.1,60,intp,300,-11,50,ResidE_recoil);
-	MyFill("ResidualEn_IntP_vs_Path_4vec",300,-0.1,60,r_fullpath,300,-0.1,60,intp);
-	MyFill("ResidualEn_vs_Needle_4vec",256,0,4096,ICne_E_diff,300,-11,50,ResidE_recoil);
-	MyFill("ResidualEn_NeedleCal4vec",256,0,70,ICne_E_diff_cal,300,-11,50,ResidE_recoil);	    
-	MyFill("ResidualEn_vs_RecoilE_4vec",300,-0.1,80,ke,300,-11,50,ResidE_recoil);
-	MyFill("ResidualEn_vs_Theta_4vec",300,-0.1,180,rtheta,300,-11,50,ResidE_recoil);
+    //All histos in this section tagged with _cre (CalcRecoilE) to avoid confusion
+    //in rootfile
+    if(detid>-1 && detid<28 && pcz>0.0 && siz>=0.0 && intp>0.0 && intp<ana_length) {
+      if(protonCut->IsInside(sie, pce*sin(theta)) && tracks.NTracks1 == 3) {
+        be8_calc.CalcRecoil(tracks, i, Be8_1p);
+        Double_t eetot = Be8_1p.Energy_eject_tot;
+        Double_t ker = Be8_1p.KE_recoil;
+        Double_t rex = Be8_1p.Ex_recoil;
+        Double_t rbe = Be8_1p.BeamKE;
+        Double_t rtheta = Be8_1p.Theta;
 
 	if(detid>-1 && detid<4){
-	  MyFill("LightParEn_4VEC_vs_BeamEnergy_Tracked_4vec_Q3",300,-0.1,80,be,300,-0.1,30,etot);
-	  MyFill("RecoilEn_4VEC_vs_BeamEnergy_Tracked_4vec_Q3",300,-0.1,80,be,300,-0.1,30,ke);
-	  MyFill("SiEnergy_tot_vs_Needle_4vec_Q3",256,0,4096,ICne_E_diff,300,-0.1,30,etot);
-	  MyFill("SiEnergy_tot_vs_NeedleCal_4vec_Q3",256,0,70,ICne_E_diff_cal,300,-0.1,30,etot);
-	  MyFill("SiEnergy_tot_vs_RecoilEn_4vec_Q3",300,-0.1,80,ke,300,-0.1,30,etot);
-	  MyFill("RecoilEnergy_vs_Theta_4vec_Q3",300,-0.1,180,rtheta,300,-0.1,80,ke);
-	  MyFill("RecoilEnergy_vs_Path_4vec_Q3",300,-0.1,60,r_fullpath,300,-0.1,80,ke);		
-	  MyFill("RecoilEnergy_vs_Needle_4vec_Q3",256,0,4096,ICne_E_diff,300,-0.1,80,ke);
-	  MyFill("RecoilEnergy_vs_NeedleCal_4vec_Q3",256,0,70,ICne_E_diff_cal,300,-0.1,80,ke);
-	  MyFill("RecoilEnergy_vs_IntP_4vec_Q3",300,-0.1,60,intp,300,-0.1,80,ke);
-	  MyFill("ResidualEn_vs_Needle_4vec_Q3",256,0,4096,ICne_E_diff,300,-11,50,ResidE_recoil);
-	  MyFill("ResidualEn_vs_NeedleCal_4vec_Q3",256,0,70,ICne_E_diff_cal,300,-11,50,
-                                                                            ResidE_recoil);
-	  MyFill("ResidualEn_vs_RecoilEn_4vec_Q3",300,-0.1,80,ke,300,-11,50,ResidE_recoil);
-	  MyFill("ResidualEn_vs_Theta_4vec_Q3",300,-0.1,180,rtheta,300,-11,50,ResidE_recoil);
-	  MyFill("ResidualEn_vs_Path_4vec_Q3",300,-0.1,60,r_fullpath,300,-11,50,ResidE_recoil);
-	  MyFill("ResidualEn_vs_IntP_4vec_Q3",300,-0.1,60,intp,300,-11,50,ResidE_recoil);
+	  MyFill("ProtonE_vs_BeamE_Tracked_Q3_cre",300,-0.1,80,be,300,-0.1,30,eetot);
+	  MyFill("8BeKE_vs_BeamE_Tracked_Q3_cre",300,-0.1,80,be,300,-0.1,30,ker);
+	  MyFill("ProtonE_vs_8BeKE_Q3_cre",300,-0.1,80,ker,300,-0.1,30,eetot);
+	  MyFill("8BeKE_vs_8BeTheta_Q3_cre",300,-0.1,180,rtheta,300,-0.1,80,ker);
+	  MyFill("8BeKE_vs_IntP_Tracked_Q3_cre",300,-0.1,60,intp,300,-0.1,80,ker);
 	} else if (detid>3 && detid<16) {
-	  MyFill("LightParEn_4VEC_vs_BeamEnergy_Tracked_4vec_R1",300,-0.1,80,be,300,-0.1,30,etot);
-	  MyFill("RecoilEn_4VEC_vs_BeamEnergy_Tracked_4vec_R1",300,-0.1,80,be,300,-0.1,80,ke);
-	  MyFill("SiEnergy_tot_vs_Needle_4vec_R1",256,0,4096,ICne_E_diff,300,-0.1,30,etot);
-	  MyFill("SiEnergy_tot_vs_NeedleCal_4vec_R1",256,0,70,ICne_E_diff_cal,300,-0.1,30,etot);
-	  MyFill("SiEnergy_tot_vs_RecoilEn_4vec_R1",300,-0.1,80,ke,300,-0.1,30,etot);
-	  MyFill("RecoilEnergy_vs_Theta_4vec_R1",300,-0.1,180,rtheta,300,-0.1,30,ke);
-	  MyFill("RecoilEnergy_vs_Path_4vec_R1",300,-0.1,60,r_fullpath,300,-0.1,80,ke);
-	  MyFill("RecoilEnergy_vs_Needle_4vec_R1",256,0,4096,ICne_E_diff,300,-0.1,80,ke);
-	  MyFill("RecoilEnergy_vs_NeedleCal_4vec_R1",256,0,70,ICne_E_diff_cal,300,-0.1,80,ke);
-	  MyFill("RecoilEnergy_vs_IntP_4vec_R1",300,-0.1,60,intp,300,-0.1,80,ke);
-	  MyFill("ResidualEn_vs_Needle_4vec_R1",256,0,4096,ICne_E_diff,300,-11,50,ResidE_recoil);
-	  MyFill("ResidualEn_vs_NeedleCal_4vec_R1",256,0,70,ICne_E_diff_cal,300,-11,50,
-                                                                            ResidE_recoil);
-	  MyFill("ResidualEn_vs_RecoilEn_4vec_R1",300,-0.1,80,ke,300,-11,50,ResidE_recoil);
-	  MyFill("ResidualEn_vs_Theta_4vec_R1",300,-0.1,180,rtheta,300,-11,50,ResidE_recoil);
-	  MyFill("ResidualEn_vs_Path_4vec_R1",300,-0.1,60,r_fullpath,300,-11,50,ResidE_recoil);
-	  MyFill("ResidualEn_vs_IntP_4vec_R1",300,-0.1,60,intp,300,-11,50,ResidE_recoil);
+	  MyFill("ProtonE_vs_BeamE_Tracked_R1_cre",300,-0.1,80,be,300,-0.1,30,eetot);
+	  MyFill("8BeKE_vs_BeamE_Tracked_R1_cre",300,-0.1,80,be,300,-0.1,80,ker);
+	  MyFill("ProtonE_vs_8BeKE_R1_cre",300,-0.1,80,ker,300,-0.1,30,eetot);
+	  MyFill("8BeKE_vs_8BeTheta_R1_cre",300,-0.1,180,rtheta,300,-0.1,30,ker);
+	  MyFill("8BeKE_vs_IntP_Tracked_R1_cre",300,-0.1,60,intp,300,-0.1,80,ker);
+        }
+        be8_calc.CalcRecoil_from_Qvalue(QValue_8Be, tracks, i, Be8_1p_qval);
+        MyFill("Ex_8Be_Qvalue_Rec_cre",600,-10,40,Be8_1p_qval.Ex_recoil);  
+        MyFill("Ex_8Be_vs_BeamKE_fromQv_cre",600,-10,80,Be8_1p_qval.BeamKE,
+                                            400,-10,20,Be8_1p_qval.Ex_recoil);
+        MyFill("8Be_BeamEnergy_Tracked_vs_BeamKE_fromQv_cre",600,-10,20,Be8_1p_qval.BeamKE,
+                                                             600,-10,20,be);
+        if (rex<0.0) {
+          MyFill("PCZ_Ex8Be<0_cre",400,-10,40,pcz);
+          MyFill("IntPoint_Ex8Be<0_cre",400,-10,80,intp);
+          MyFill("BeamEnergy_Ex8Be<0_cre",400,-10,80,be);
+          MyFill("ProtonEnergy_vs_ThetaEx8Be<0_cre",400,0,190,theta*rads2deg,400,0,15,eetot);
+          MyFill("BeamEnergy_vs_IntPoint_Ex8Be<0_cre",400,-10,80,intp,400,-10,80,be);
+          MyFill("ProtonEnergy_vs_BeamEnergy_Ex8Be<0_cre",400,-10,80,be,400,0,15,eetot);
+          MyFill("ProtonEnergy_vs_SiR_Ex8Be<0_cre",400,-1,11,sir,400,0,15,eetot);
+          MyFill("ProtonEnergy_vs_IntPoint_Ex8Be<0_cre",400,-10,80,intp,400,0,15,eetot);
+          MyFill("IntPoint_vs_DetID_Ex8Be<0_cre",28,0,28,detid,400,-10,80,intp);
+          MyFill("IntPoint_vs_PCZ_Ex8Be<0_cre",400,-10,40,pcz,400,-10,80,intp);
+          MyFill("SiPhi_vs_PCPhi_Ex8Be<0_cre",400,0,360,pcphi*rads2deg,400,-0,360,siphi*rads2deg);
+        }
+        MyFill("Ex_of_8BeRecoil_cre",600,-10,40,rex);
+        MyFill("BeamKE_8Be_cre",600,-10,80,rbe);
+        MyFill("BeamKE_8Be_cm_cre",600,-1,15,rbe*4/22);
+        MyFill("BeamEnergy_8Be_Tracked_cre",600,-10,80,be);
+        MyFill("ProtonE_Tracked_8BeProtons_cre",600,-10,20,eetot);
+        MyFill("Ex8Be_vs_BeamKE_cre",600,-10,80,rbe,400,-10,20,rex);
+        MyFill("ProtonE_vs_Ex8Be_cre",600,-10,60,rex,400,-10,20,eetot);
+        MyFill("ProtonE_vs_ProtonTheta_8Be_cre",600,0,180,theta*rads2deg,600,0,20,eetot);
+        MyFill("ProtonE_vs_BeamKE_8Be_cre",600,-10,80,rbe,600,0,20,eetot);
+        MyFill("BeamKE_Tr_vs_BeamKE_8Be_cre",600,-10,80,rbe,600,-10,80,be);
+        if(detid>-1 && detid<4) {
+          MyFill("Ex8Be_Q3_cre",600,-10,40,rex);
+          MyFill("BeamKE_8Be_Q3_cre",600,-10,80,rbe);
+          MyFill("BeamKE_8Be_Q3_cm_cre",600,-1,15,rbe*4/22);
+          MyFill("BeamEnergy_Tracked_Q3_cre",600,-10,80,be);
+          MyFill("ProtonE_Tracked_8BeProtons_Q3_cre",600,-10,20,eetot);
+          MyFill("Ex8Be_vs_BeamKE_Q3_cre",600,-10,80,rbe,400,-10,20,rex);
+          MyFill("ProtonE_vs_Ex8Be_Q3_cre",600,-10,60,rex,400,-10,20,eetot);
+          MyFill("ProtonE_vs_ProtonTheta_8Be_Q3_cre",600,0,180,theta*rads2deg,600,0,20,eetot);
+          MyFill("ProtonE_vs_BeamKE_8Be_Q3_cre",600,-10,80,rbe,600,0,20,eetot);
+          MyFill("BeamEnergy_Track_vs_BeamKE_8Be_Q3_cre",600,-10,80,rbe,600,-10,80,be);
+        } else if (detid>3 && detid <16) {
+          MyFill("Ex8Be_R1_cre",600,-10,40,rex);
+          MyFill("BeamKE_8Be_R1_cre",600,-10,80,rbe);
+          MyFill("BeamKE_8Be_R1_cm_cre",600,-1,15,rbe*4/22);
+          MyFill("BeamEnergy_Tracked_R1_cre",600,-10,80,be);
+          MyFill("ProtonE_Track_8BeProtons_R1_cre",600,-10,20,eetot);
+          MyFill("Ex8Be_vs_BeaKE_R1_cre",600,-10,80,rbe,400,-10,20,rex);
+          MyFill("ProtonE_vs_Ex8Be_R1_cre",600,-10,60,rex,400,-10,20,eetot);
+          MyFill("ProtonE_vs_ProtonTheta_8Be_R1_cre",600,0,180,theta*rads2deg,600,0,20,eetot);
+          MyFill("ProtonE_vs_BeamKE_8Be_R1_cre",600,-10,80,rbe,600,0,20,eetot);
+          MyFill("BeamEnergy_Track_vs_BeamKE_8Be_R1_cre",600,-10,80,rbe,600,-10,80,be);
+        } else if (detid>15 && detid<28) {
+          MyFill("Ex8Be_R2_cre",600,-10,40,rex);
+          MyFill("BeamKE_8Be_R2_cre",600,-10,80,rbe);
+          MyFill("BeamKE_8Be_R2_cm_cre",600,-1,15,rbe*4/22);
+          MyFill("BeamEnergy_Tracked_R2_cre",600,-10,80,be);
+          MyFill("ProtonE_Track_8BeProtons_R2_cre",600,-10,20,eetot);
+          MyFill("Ex8Be_vs_BeaKE_R2_cre",600,-10,80,rbe,400,-10,20,rex);
+          MyFill("ProtonE_vs_Ex8Be_R2_cre",600,-10,60,rex,400,-10,20,eetot);
+          MyFill("ProtonE_vs_ProtonTheta_8Be_R2_cre",600,0,180,theta*rads2deg,600,0,20,eetot);
+          MyFill("ProtonE_vs_BeamKE_8Be_R2_cre",600,-10,80,rbe,600,0,20,eetot);
+          MyFill("BeamEnergy_Track_vs_BeamKE_8Be_R2_cre",600,-10,80,rbe,600,-10,80,be);
+        }
+        if(tracks.NTracks1==1) {
+          MyFill("ExcitationEnergy_p0_ntracks1_1_cre",400,-10,20,rex);
+          MyFill("ExEnergy_vs_BeamEnergy_p0_ntracks1_1_cre",600,-10,80,be,400,-10,20,rex);
+          MyFill("ExEnergy_vs_BeamE_cm_p0_ntracks1_1_cre",600,-10,20,be*4/22,400,-10,20,rex);
+        }
+      } else if (he3Cut->IsInside(sie, pce*sin(theta))&&tracks.NTracks1==1) {
+        li6_calc.CalcRecoil(tracks, i, Li6);
+        Double_t eetot = Li6.Energy_eject_tot;
+        Double_t ker = Li6.KE_recoil;
+        Double_t rtheta = Li6.Theta;
+        Double_t rex = Li6.Ex_recoil;
+        Double_t rbe = Li6.BeamKE;
+
+        MyFill("6LiExEnergy",100,0,15,rex);
+        MyFill("BeamE_Tracked_vs_BeamKE_6Li_cre", 300,-0.1,20,be,300,-0.1,20,rbe);
+        MyFill("Ex6Li_vs_BeamKE_cre",300, -0.1,20,rbe,300,0,15,rex);
+	if(detid>-1 && detid<4){
+	  MyFill("3HeE_vs_BeamE_Tracked_Q3_cre",300,-0.1,80,be,300,-0.1,30,eetot);
+	  MyFill("6LiKE_vs_BeamE_Tracked_Q3_cre",300,-0.1,80,be,300,-0.1,30,ker);
+	  MyFill("3HeE_vs_6LiKE_Q3_cre",300,-0.1,80,ker,300,-0.1,30,eetot);
+	  MyFill("6LiKE_vs_6LiTheta_Q3",300,-0.1,180,rtheta,300,-0.1,80,ker);
+	  MyFill("6LiKE_vs_IntP_Tracked_Q3_cre",300,-0.1,60,intp,300,-0.1,80,ker);
+	} else if (detid>3 && detid<16) {
+	  MyFill("3HeE_vs_BeamE_Tracked_R1_cre",300,-0.1,80,be,300,-0.1,30,eetot);
+	  MyFill("6LiKE_vs_BeamE_Tracked_R1_cre",300,-0.1,80,be,300,-0.1,80,ker);
+	  MyFill("3HeE_vs_6LiKE_R1_cre",300,-0.1,80,ker,300,-0.1,30,eetot);
+	  MyFill("6LiKE_vs_6LiTheta_R1_cre",300,-0.1,180,rtheta,300,-0.1,30,ker);
+	  MyFill("6LiKE_vs_IntP_Tracked_R1_cre",300,-0.1,60,intp,300,-0.1,80,ker);
+        }
+        li6_calc.CalcRecoil_from_Qvalue(QValue_6Li, tracks, i, Li6_qval);
+        //cout<<"Li6 BeamKE: "<<Li6_qval.BeamKE<<endl;
+        MyFill("Ex_6Li_Qvalue_Rec_cre",600,-10,40,Li6_qval.Ex_recoil);  
+        MyFill("Ex_6Li_vs_BeamKE_fromQv_cre",600,-10,80,Li6_qval.BeamKE,
+                                             400,-10,20,Li6_qval.Ex_recoil);
+        MyFill("6Li_BeamEnergy_Tracked_vs_BeamKE_fromQv_cre",600,-10,20,Li6_qval.BeamKE,
+                                                             600,-10,20,be);
+        if (rex<0.0) {
+          MyFill("PCZ_Ex6Li<0_cre",400,-10,40,pcz);
+          MyFill("IntPoint_Ex6Li<0_cre",400,-10,80,intp);
+          MyFill("BeamEnergy_Ex6Li<0_cre",400,-10,80,be);
+          MyFill("ProtonEnergy_vs_ThetaEx6Li<0_cre",400,0,190,theta*rads2deg,400,0,15,eetot);
+          MyFill("BeamEnergy_vs_IntPoint_Ex6Li<0_cre",400,-10,80,intp,400,-10,80,be);
+          MyFill("ProtonEnergy_vs_BeamEnergy_Ex6Li<0_cre",400,-10,80,be,400,0,15,eetot);
+          MyFill("ProtonEnergy_vs_SiR_Ex6Li<0_cre",400,-1,11,sir,400,0,15,eetot);
+          MyFill("ProtonEnergy_vs_IntPoint_Ex6Li<0_cre",400,-10,80,intp,400,0,15,eetot);
+          MyFill("IntPoint_vs_DetID_Ex6Li<0_cre",28,0,28,detid,400,-10,80,intp);
+          MyFill("IntPoint_vs_PCZ_Ex6Li<0_cre",400,-10,40,pcz,400,-10,80,intp);
+          MyFill("SiPhi_vs_PCPhi_Ex6Li<0_cre",400,0,360,pcphi*rads2deg,400,-0,360,siphi*rads2deg);
+        }
+        MyFill("Ex_of_6LiRecoil_cre",600,-10,40,rex);
+        MyFill("BeamKE_6Li_cre",600,-10,80,rbe);
+        MyFill("BeamKE_6Li_cm_cre",600,-1,15,rbe*4/22);
+        MyFill("BeamEnergy_6Li_Tracked_cre",600,-10,80,be);
+        MyFill("ProtonE_Tracked_6LiProtons_cre",600,-10,20,eetot);
+        MyFill("Ex6Li_vs_BeamKE_cre",600,-10,80,rbe,400,-10,20,rex);
+        MyFill("ProtonE_vs_Ex6Li_cre",600,-10,60,rex,400,-10,20,eetot);
+        MyFill("ProtonE_vs_ProtonTheta_6Li_cre",600,0,180,theta*rads2deg,600,0,20,eetot);
+        MyFill("ProtonE_vs_BeamKE_6Li_cre",600,-10,80,rbe,600,0,20,eetot);
+        MyFill("BeamKE_Tr_vs_BeamKE_6Li_cre",600,-10,80,rbe,600,-10,80,be);
+        if(detid>-1 && detid<4) {
+          MyFill("Ex6Li_Q3_cre",600,-10,40,rex);
+          MyFill("BeamKE_6Li_Q3_cre",600,-10,80,rbe);
+          MyFill("BeamKE_6Li_Q3_cm_cre",600,-1,15,rbe*4/22);
+          MyFill("BeamEnergy_Tracked_Q3_cre",600,-10,80,be);
+          MyFill("ProtonE_Tracked_6LiProtons_Q3_cre",600,-10,20,eetot);
+          MyFill("Ex6Li_vs_BeamKE_Q3_cre",600,-10,80,rbe,400,-10,20,rex);
+          MyFill("ProtonE_vs_Ex6Li_Q3_cre",600,-10,60,rex,400,-10,20,eetot);
+          MyFill("ProtonE_vs_ProtonTheta_6Li_Q3_cre",600,0,180,theta*rads2deg,600,0,20,eetot);
+          MyFill("ProtonE_vs_BeamKE_6Li_Q3_cre",600,-10,80,rbe,600,0,20,eetot);
+          MyFill("BeamEnergy_Track_vs_BeamKE_6Li_Q3_cre",600,-10,80,rbe,600,-10,80,be);
+        } else if (detid>3 && detid <16) {
+          MyFill("Ex6Li_R1_cre",600,-10,40,rex);
+          MyFill("BeamKE_6Li_R1_cre",600,-10,80,rbe);
+          MyFill("BeamKE_6Li_R1_cm_cre",600,-1,15,rbe*4/22);
+          MyFill("BeamEnergy_Tracked_R1_cre",600,-10,80,be);
+          MyFill("ProtonE_Track_6LiProtons_R1_cre",600,-10,20,eetot);
+          MyFill("Ex6Li_vs_BeaKE_R1_cre",600,-10,80,rbe,400,-10,20,rex);
+          MyFill("ProtonE_vs_Ex6Li_R1_cre",600,-10,60,rex,400,-10,20,eetot);
+          MyFill("ProtonE_vs_ProtonTheta_6Li_R1_cre",600,0,180,theta*rads2deg,600,0,20,eetot);
+          MyFill("ProtonE_vs_BeamKE_6Li_R1_cre",600,-10,80,rbe,600,0,20,eetot);
+          MyFill("BeamEnergy_Track_vs_BeamKE_6Li_R1_cre",600,-10,80,rbe,600,-10,80,be);
+        } else if (detid>15 && detid<28) {
+          MyFill("Ex6Li_R2_cre",600,-10,40,rex);
+          MyFill("BeamKE_6Li_R2_cre",600,-10,80,rbe);
+          MyFill("BeamKE_6Li_R2_cm_cre",600,-1,15,rbe*4/22);
+          MyFill("BeamEnergy_Tracked_R2_cre",600,-10,80,be);
+          MyFill("ProtonE_Track_6LiProtons_R2_cre",600,-10,20,eetot);
+          MyFill("Ex6Li_vs_BeaKE_R2_cre",600,-10,80,rbe,400,-10,20,rex);
+          MyFill("ProtonE_vs_Ex6Li_R2_cre",600,-10,60,rex,400,-10,20,eetot);
+          MyFill("ProtonE_vs_ProtonTheta_6Li_R2_cre",600,0,180,theta*rads2deg,600,0,20,eetot);
+          MyFill("ProtonE_vs_BeamKE_6Li_R2_cre",600,-10,80,rbe,600,0,20,eetot);
+          MyFill("BeamEnergy_Track_vs_BeamKE_6Li_R2_cre",600,-10,80,rbe,600,-10,80,be);
+        }
+        if(tracks.NTracks1==1) {
+          MyFill("ExcitationEnergy_3he_ntracks1_1_cre",400,-10,20,rex);
+          MyFill("ExEnergy_vs_BeamEnergy_3he_ntracks1_1_cre",600,-10,80,be,400,-10,20,rex);
+          MyFill("ExEnergy_vs_BeamE_cm_3he_ntracks1_1_cre",600,-10,20,be*4/22,400,-10,20,rex);
         }
       }
     }
   }
-  Elastic2.ELoss_light = NULL;
-  Elastic2.ELoss_beam = NULL;
+  be8_calc.ELoss_eject = NULL;
+  be8_calc.ELoss_beam = NULL;
+  li6_calc.ELoss_eject = NULL;
+  li6_calc.ELoss_beam = NULL;
+}
+
+void analyzer::CalcSmAngleAlphas() {
+  Reconstruct be8_calc(m_7be, m_d, m_p, m_alpha, m_8be);
+  be8_calc.ELoss_eject = proton_eloss;
+  be8_calc.ELoss_eject2 = alpha_eloss;
+  be8_calc.ELoss_beam = be7_eloss;
+  
+  vector<int> IsProton;
+  vector<int> IsT1alpha;
+  vector<int> IsT2alpha;
+  vector<int> IsEject;
+
+  Double_t alpha_pce = 0.0;
+  Double_t alpha_t = 0.0;
+  Double_t alpha_be = 0.0;
+  Double_t alpha_pl = 0.0;
+  Double_t alpha_phi = 0.0;
+
+  for(int i=0; i<tracks.NTracks1; i++) {
+    Int_t detid = tracks.TrEvent[i].DetID;
+    Double_t be = tracks.TrEvent[i].BeamEnergy;
+    Double_t sir = tracks.TrEvent[i].SiR;
+    Double_t sie = tracks.TrEvent[i].SiEnergy;
+    Double_t pce = tracks.TrEvent[i].PCEnergy;
+    Double_t pcz = tracks.TrEvent[i].PCZ;
+    Double_t siz = tracks.TrEvent[i].SiZ;
+    Double_t theta = tracks.TrEvent[i].Theta;
+    Double_t intp = tracks.TrEvent[i].IntPoint;
+    Double_t pl = tracks.TrEvent[i].PathLength;
+    Double_t phi = tracks.TrEvent[i].SiPhi;
+    if(detid>-1 && detid<28 && pcz>0.0 && siz>=0.0 && intp>0.0 && intp<ana_length && 
+       be>0.0 && be<BeamE && sir>4.0 && sir<11.0 && tracks.NTracks1 == 2) {
+      MyFill("Ede_8be_glob_p",300,0,30,sie/2.0,300,0,0.3,pce/2.0*sin(theta));
+      if(protonCut->IsInside(sie, pce*sin(theta))) {
+        IsProton.push_back(i);
+      } else if(alphaCut->IsInside(sie/2.0, (pce/2.0)*sin(theta))){
+        tracks.TrEvent[i].PCEnergy = pce/2.0;
+        IsT1alpha.push_back(i);
+        alpha_pce = pce/2.0;
+        alpha_t = theta;
+        alpha_be = be;
+        alpha_pl = pl;
+        alpha_phi = phi;
+      }
+    }
+  }
+  /*if(IsProton.size() == 1 && IsT1alpha.size() == 1) {
+    for (int i=tracks.NTracks1; i<(tracks.NTracks1+tracks.NTracks2); i++) {
+      bool valid = RecoverTrack1(tracks.TrEvent[IsT1alpha[0]], tracks.TrEvent[i]);
+      if(valid) {
+        TrackEvent hope = tracks.TrEvent[i];
+        Double_t sie2 = hope.SiEnergy;
+        Double_t theta2 = hope.Theta;
+        Double_t pce2 = hope.PCEnergy;
+        Double_t intp1 = tracks.TrEvent[IsT1alpha[0]].IntPoint;
+        Double_t intp2 = tracks.TrEvent[i].IntPoint;
+        Double_t theta1 = tracks.TrEvent[IsT1alpha[0]].Theta;
+        //MyFill("Ede_Recov",300,0,30,sie2,300,0,0.3,alpha_pce*sin(alpha_t));
+        MyFill("Ede_Recov",300,0,30,sie2,300,0,0.3,pce2*sin(theta2));
+        //if (alphaCut->IsInside(sie2, alpha_pce*sin(alpha_t))){
+        if (joinedAlphaCut->IsInside(sie2, pce2*sin(theta2))){
+          MyFill("RecovAlphaIP_vs_T1AlphaIP",550,0,55,intp1,550,0,55,intp2);
+          MyFill("RecovAlphaTheta_vs_T1AlphaTheta",300,0,2*TMath::Pi(),theta1,300,0,2*TMath::Pi(),theta2);
+          IsT2alpha.push_back(i);
+          tracks.TrEvent[i].PathLength = alpha_pl;
+          tracks.TrEvent[i].BeamEnergy = alpha_be;
+          tracks.TrEvent[i].Theta = alpha_t;
+          tracks.TrEvent[i].PCEnergy = alpha_pce; //like a flag for later
+        }
+      }
+    }
+  }*/
+  if(IsT1alpha.size() == 1 && IsProton.size() == 1) {
+    IsEject.push_back(IsProton[0]);
+    IsEject.push_back(IsT1alpha[0]);
+    be8_calc.CalcE_ex(tracks, IsEject, Be8_1p_any, Be8_1p_any_qval);
+  }
+
+  be8_calc.ELoss_eject = NULL;
+  be8_calc.ELoss_eject2 = NULL;
+  be8_calc.ELoss_beam = NULL;
 }
 
 /*ReconstructMe()
- *This is the main reconstruction method; reconstructs properties of the beam,
- *interaction point, and recoil using both kinematics and tracking information
- *Utilizes ReconstructHeavy, Reconstruct20Ne, etc. This is an absolute monster of a code
- *and will take the most time of the bunch to run.
- *Have fun
+ *Reconstruction method for multiparticle reconstruction; in the case of this version, used for 
+ *reconstruct of 7Be+d->p+2*alpha
  */
 void analyzer::ReconstructMe() {
-  Reconstruct Elastic1(M_18Ne,M_alpha,M_p,M_21Na);
-  Elastic1.ELoss_light = proton_eloss;
-  Elastic1.ELoss_beam = Ne18_eloss;
+  Reconstruct be8_calc(m_7be,m_d,m_p,m_alpha,m_8be);
+  Reconstruct li5_calc(m_7be,m_d,m_p,m_alpha,m_5li);
+  be8_calc.ELoss_eject = proton_eloss;
+  be8_calc.ELoss_eject2 = alpha_eloss;
+  be8_calc.ELoss_beam = be7_eloss;
+  li5_calc.ELoss_eject = proton_eloss;
+  li5_calc.ELoss_eject2 = alpha_eloss;
+  li5_calc.ELoss_beam = be7_eloss;
+  vector<Int_t> IsEject;
   vector<Int_t> IsProton;
   vector<Int_t> IsAlpha;
-  vector<Double_t> RecoilE;
-
+  //Grab all of the protons and alphas 
   for(int i=0; i<tracks.NTracks1; i++) {
     if(tracks.TrEvent[i].TrackType !=1) {
       cout<<"gwmAnalyzer::ReconstructMe() error: Track is not type 1!"<<endl;
     }
     Int_t detid = tracks.TrEvent[i].DetID;
-    Double_t siz = tracks.TrEvent[i].SiZ;
     Double_t pcz = tracks.TrEvent[i].PCZ;
-    Double_t sir = tracks.TrEvent[i].SiR;
-    Double_t sie = tracks.TrEvent[i].SiEnergy;
-    Double_t pce = tracks.TrEvent[i].PCEnergy;
-    Double_t pcphi = tracks.TrEvent[i].PCPhi;
-    Double_t siphi = tracks.TrEvent[i].SiPhi;
-    Double_t be = tracks.TrEvent[i].BeamEnergy;
     Double_t intp = tracks.TrEvent[i].IntPoint;
+    Double_t siz = tracks.TrEvent[i].SiZ;
+    Double_t sir = tracks.TrEvent[i].SiR;
+    Double_t be = tracks.TrEvent[i].BeamEnergy;
     Double_t theta = tracks.TrEvent[i].Theta;
-    Double_t resE = tracks.TrEvent[i].ResidualEn;
+    Double_t pce = tracks.TrEvent[i].PCEnergy;
+    Double_t sie = tracks.TrEvent[i].SiEnergy;
     if(detid>-1 && detid<28 && pcz>0.0 && siz>=0.0 && intp>0.0 && intp<ana_length && 
-       be>0.0 && be<BeamE && sir>4.0 && sir<11.0) {
-      if(protonCut->IsInside(sie, pce*sin(theta))) {
+       be>0.0 && be<BeamE && sir>4.0 && sir<11.0 /*&& tracks.NTracks1 == 3*/) {
+      if(alphaCut->IsInside(sie, pce*sin(theta))) {
+        IsAlpha.push_back(i);
+      } else if (protonCut->IsInside(sie, pce*sin(theta))) {
         IsProton.push_back(i);
-        Elastic1.ReconstructHeavy(tracks, i, recoil);
-        RecoilE.push_back(recoil.Ex);
-        Double_t rex = recoil.Ex;
-        Double_t retot = recoil.Energy_tot;
-        Double_t rbe = recoil.BeamEnergy;
-
-        if(rex>-1.0 && rex<1.0 && needleCut->IsInside(ICne_E_diff*0.0116, resE)) {
-          Elastic1.ReconstructHeavy_Qvalue(QValue, tracks, i, recoil);
-	  MyFill("Ex_21Na_Qvalue_Rec",600,-10,40,recoil.Ex_21Na);		   
-	  MyFill("Ex_21Na_vs_Beam_Qvalue_Rec",600,-10,80,recoil.Beam_Qv_21Na,
-                                              400,-10,20,recoil.Ex_21Na);
-	  MyFill("BeamEnergy_Tracked_vs_Beam_Qv_21Na_Qvalue_Rec",600,-10,80,recoil.Beam_Qv_21Na,
-                                                                 600,-10,80,be);
-	  MyFill("ResidualEn_vs_NCal_Qvalue_Rec",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	  MyFill("BeamEnergy_Track_vs_NCal_Qvalue_Rec",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-	  MyFill("Beam_Qv_21Na_vs_NCal_Qvalue_Rec",600,0,40,ICne_E_diff*0.0116,
-                                                   600,-10,80,recoil.Beam_Qv_21Na);
-        } else if (rex<0.0) {
-	  MyFill("PCZ_Ex<0",400,-10,40,pcz);
-	  MyFill("IntPoint_Ex<0",400,-10,80,intp);
-	  MyFill("BeamEnergy_Ex<0",400,-10,80,be);
-	  MyFill("ProtonEnergy_vs_ThetaEx<0",400,0,190,theta*rads2deg,400,0,15,retot);
-	  MyFill("BeamEnergy_vs_IntPoint_Ex<0",400,-10,80,intp,400,-10,80,be);
-	  MyFill("ProtonEnergy_vs_BeamEnergy_Ex<0",400,-10,80,be,400,0,15,retot);
-	  MyFill("ProtonEnergy_vs_SiR_Ex<0",400,-1,11,sir,400,0,15,retot);
-	  MyFill("ProtonEnergy_vs_IntPoint_Ex<0",400,-10,80,intp,400,0,15,retot);
-	  MyFill("ProtonEnergy_vs_NeedleEn_Ex<0",600,0,40,ICne_E_diff*0.0116,400,0,15,retot);
-	  MyFill("IntPoint_vs_DetID_Ex<0",28,0,28,detid,400,-10,80,intp);
-	  MyFill("IntPoint_vs_PCZ_Ex<0",400,-10,40,pcz,400,-10,80,intp);
-	  MyFill("SiPhi_vs_PCPhi_Ex<0",400,-0,360,pcphi*rads2deg,400,-0,360,siphi*rads2deg);
-	  MyFill("ResidualEn_vs_Needle_Ex<0",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	  MyFill("BeamEnergy_vs_Needle_Ex<0",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-          if (needleCut->IsInside(ICne_E_diff*0.0116, resE)) {
-	    MyFill("BeamEnergy_for_cross_section_Ex<0_Needlecut",300,0,55,rbe);
-	    MyFill("BeamEnergy_atCM_cross_section_Ex<0Needlecut",300,0,10,rbe*4/22);
-	    MyFill("ResidualEn_vs_Needle_Ex<0NeedleC",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	    MyFill("BeamEnergy_vs_Needle_Ex<0NeedleC",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-          }
-        }
-        if(needleCut->IsInside(ICne_E_diff*0.0116, resE)) {
-	  MyFill("BeamEnergy_for_cross_section_NeedleCutAllDet",300,0,55,rbe);
-	  MyFill("BeamEnergy_atCM_cross_sectionNeedleCutAllDet",300,0,10,rbe*4/22);
-	  MyFill("ExEnergy_vs_BeamEnergy_NeedleCutAllDet",600,-10,80,rbe,400,-10,40,rex);
-	  MyFill("ResidualEn_vs_NCal_NeedleCutAllDet",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	  MyFill("BeamEnergy_vs_NCal_NeedleCutAllDet",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-          if(detid>-1 && detid<4) {
-	    MyFill("BeamEnergy_for_cross_section_NeedleCutQ3",300,0,55,rbe);
-	    MyFill("BeamEnergy_atCM_cross_section_NeedleCutQ3",300,0,10,rbe*4/22);
-	    MyFill("ExEnergy_vs_BeamEnergy_NeedleCutQ3",600,-10,80,rbe,400,-10,40,rex);
-	    MyFill("ResidualEn_vs_NCal_NeedleCutQ3",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	    MyFill("BeamEnergy_vs_NCal_NeedleCutQ3",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-          }else if (detid>3 && detid<16) {
-	    MyFill("BeamEnergy_for_cross_section_NeedleCutR1",300,0,55,rbe);
-	    MyFill("BeamEnergy_atCM_cross_sectionNeedleCutR1",300,0,10,rbe*4/22);
-	    MyFill("ExEnergy_vs_BeamEnergy_NeedleCutR1",600,-10,80,rbe,400,-10,40,rex);
- 	    MyFill("ResidualEn_vs_NCal_NeedleCutR1",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	    MyFill("BeamEnergy_vs_NCal_NeedleCutR1",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-          }else if (detid>15 && detid<28) {
-	    MyFill("BeamEnergy_for_cross_section_NeedleCutR2",300,0,55,rbe);
-	    MyFill("BeamEnergy_atCM_cross_sectionNeedleCutR2",300,0,10,rbe*4/22);
-	    MyFill("ExEnergy_vs_BeamEnergy_NeedleCutR2",600,-10,80,rbe,400,-10,40,rex);
-	    MyFill("ResidualEn_vs_NCal_NeedleCutR2",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	    MyFill("BeamEnergy_vs_NCal_NeedleCutR2",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-          }
-        }
-	MyFill("Ex_of_HeavyRecoil",600,-10,40,rex);
-	MyFill("BeamEnergy_apRec",600,-10,80,rbe);
-	MyFill("BeamEnergy_apRec_cm",600,-1,15,rbe*4/22);
-	MyFill("BeamEnergy_apRec_Tracked",600,-10,80,be);
-	MyFill("ProtonEnergy_Tracked_protons",600,-10,20,retot);
-	MyFill("ExEnergy_vs_BeamEnergy",600,-10,80,rbe,400,-10,20,rex);
-	MyFill("ProtonEnergy_vs_ExEnergy",600,-10,60,rex,400,-10,20,retot);
-	MyFill("ProtonEnergy_vs_Theta",600,0,180,theta*rads2deg,600,0,20,retot);
-	MyFill("ProtonEnergy_vs_BeamEnergy",600,-10,80,rbe,600,0,20,retot);
-	MyFill("BeamEnergy_Tr_vs_BeamQval_apRecHeavy",600,-10,80,rbe,600,-10,80,be);
-	MyFill("ProtonEnergy_vs_NCalAllDet",600,0,40,ICne_E_diff*0.0116,600,-10,20,retot);
-	MyFill("ResidualEn_vs_NeedleCalAllDet",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	MyFill("BeamEnergy_vs_NeedleCalAllDet",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-        if(detid>-1 && detid<4) {
-	  MyFill("Ex_of_HeavyRecoilQ3",600,-10,40,rex);
-	  MyFill("BeamEnergy_apRecQ3",600,-10,80,rbe);
-	  MyFill("BeamEnergy_apRecQ3_cm",600,-1,15,rbe*4/22);
-	  MyFill("BeamEnergy_apRec_TrackedQ3",600,-10,80,be);
-	  MyFill("ProtonEnergy_Tracked_protonsQ3",600,-10,20,retot);
-	  MyFill("ExEnergy_vs_BeamEnergyQ3",600,-10,80,rbe,400,-10,20,rex);
-	  MyFill("ProtonEnergy_vs_ExEnergyQ3",600,-10,60,rex,400,-10,20,retot);
-	  MyFill("ProtonEnergy_vs_ThetaQ3",600,0,180,theta*rads2deg,600,0,20,retot);
-	  MyFill("ProtonEnergy_vs_BeamEnergyQ3",600,-10,80,rbe,600,0,20,retot);
-	  MyFill("BeamEnergy_Track_vs_BeamQval_apRecHeavyQ3",600,-10,80,rbe,600,-10,80,be);
-	  MyFill("ProtonEnergy_vs_NCalQ3",600,0,40,ICne_E_diff*0.0116,600,-10,20,retot);
-	  MyFill("ResidualEn_vs_NCalQ3",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	  MyFill("BeamEnergy_vs_NCalQ3",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-        } else if (detid>3 && detid <16) {
-	  MyFill("Ex_of_HeavyRecoilR1",600,-10,40,rex);
-	  MyFill("BeamEnergy_apRecR1",600,-10,80,rbe);
-	  MyFill("BeamEnergy_apRecR1_cm",600,-1,15,rbe*4/22);
-	  MyFill("BeamEnergy_apRec_TrackR1",600,-10,80,rbe);
-	  MyFill("ProtonEnergy_Track_protonsR1",600,-10,20,retot);
-	  MyFill("ExEnergy_vs_BeamEnergyR1",600,-10,80,rbe,400,-10,20,rex);
-	  MyFill("ProtonEnergy_vs_ExEnergyR1",600,-10,60,rex,400,-10,20,retot);
-	  MyFill("ProtonEnergy_vs_ThetaR1",600,0,180,theta*rads2deg,600,0,20,retot);
-	  MyFill("ProtonEnergy_vs_BeamEnergyR1",600,-10,80,rbe,600,0,20,retot);
-	  MyFill("BeamEnergy_Track_vs_BeamQval_apRecHeavyR1",600,-10,80,rbe,600,-10,80,be);
-	  MyFill("ProtonEnergy_vs_NCalR1",600,0,40,ICne_E_diff*0.0116,600,-10,20,retot);
-	  MyFill("ResidualEn_vs_NCalR1",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	  MyFill("BeamEnergy_vs_NCalR1",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-        } else if (detid>15 && detid<28) {
-	  MyFill("Ex_of_HeavyRecoilR2",600,-10,40,rex);
-	  MyFill("BeamEnergy_apRecR2",600,-10,80,rbe);
-	  MyFill("BeamEnergy_apRecR2_cm",600,-1,15,rbe*4/22);
-	  MyFill("BeamEnergy_apRec_TrackR2",600,-10,80,be);
-	  MyFill("ProtonEnergy_Track_protonsR2",600,-10,20,retot);
-	  MyFill("ExEnergy_vs_BeamEnergyR2",600,-10,80,rbe,400,-10,20,rex);
-	  MyFill("ProtonEnergy_vs_ExEnergyR2",600,-10,60,rex,400,-10,20,retot);
-	  MyFill("ProtonEnergy_vs_ThetaR2",600,0,180,theta*rads2deg,600,0,20,retot);
-	  MyFill("ProtonEnergy_vs_BeamEnergyR2",600,-10,80,rbe,600,0,20,retot);
-	  MyFill("BeamEnergy_Track_vs_BeamQval_apRecHeavyR2",600,-10,80,rbe,600,-10,80,be);
-	  MyFill("ProtonEnergy_vs_NCalR2",600,0,40,ICne_E_diff*0.0116,600,-10,20,retot);
-	  MyFill("ResidualEn_vs_NCalR2",600,0,40,ICne_E_diff*0.0116,600,0,40,resE);
-	  MyFill("BeamEnergy_vs_NCalR2",600,0,40,ICne_E_diff*0.0116,600,-10,80,be);
-        }
-      }//if protonCut
-      if (IsProton.size() == 1) { //This is a check case; REMOVE POST TESTING
-	MyFill("SiProtonE_de_p0",400,-1,35,tracks.TrEvent[IsProton[0]].SiEnergy,
-               400,-0.01,0.8,tracks.TrEvent[IsProton[0]].PCEnergy*sin(tracks.TrEvent[IsProton[0]].Theta));
-      }
-      if(IsProton.size()==1 && tracks.NTracks1==1) {//only single proton events
-        Double_t p1theta = tracks.TrEvent[IsProton[0]].Theta;
-        Double_t p1sie = tracks.TrEvent[IsProton[0]].SiEnergy;
-        Double_t p1be = tracks.TrEvent[IsProton[0]].BeamEnergy;
-        Double_t p1resE = tracks.TrEvent[IsProton[0]].ResidualEn;
-        Double_t p1intp = tracks.TrEvent[IsProton[0]].IntPoint;
-        Int_t p1detid = tracks.TrEvent[IsProton[0]].DetID;
-        Double_t rex = RecoilE[0];
-
-	MyFill("SiProtonE_theta_p0_ntracks1_1",400,-1,190,p1theta*rads2deg,400,-1,15,p1sie);
-	MyFill("SiProtonE_vs_IntP_p0_ntracks1_1",400,-1,70,p1intp,400,-1,15,p1sie);
-	MyFill("SiProtonE_vs_BeamEnergy_p0_ntracks1_1",400,-1,80,p1be,400,-1,15,p1sie);
-	MyFill("ExEnergy_vs_BeamEnergy_p0_ntracks1_1",600,-10,80,p1be,400,-10,20,rex);
-	MyFill("ExEnergy_vs_BeamE_cm_p0_ntracks1_1",600,-10,20,p1be*4/22,400,-10,20,rex);
-	MyFill("ExcitationEnergy_p0_ntracks1_1",400,-10,20,rex);
-	MyFill("SiProtonEnergy_vs_N_p0_ntracks1_1",600,0,40,ICne_E_diff*0.0116,400,-10,20,p1sie);
-	MyFill("ResidualEn_vs_N_p0_ntracks1_1",600,0,40,ICne_E_diff*0.0116,600,0,40,p1resE);
-	MyFill("BeamEnergy_vs_N_p0_ntrack1_1",600,0,40,ICne_E_diff*0.0116,600,-10,80,p1be);
-	MyFill("BeamE_cm_p0_ntracks1_1",180,-1,15,be*4/22);
-        if(needleCut->IsInside(ICne_E_diff*0.0116, p1resE)) {//what is this 0.0116 factor?
-	  MyFill("BeamEnergy_for_cross_section_p0_ntracks1_1_Ncut",300,0,55,p1be);
-	  MyFill("BeamEnergy_at_CM_for_cross_section_p0_ntracks1_1_Ncut",300,0,10,p1be*4/22);
-	  MyFill("ExEnergy_vs_BeamEnergy_p0_ntracks1_1_Ncut",600,-10,80,p1be,400,-10,20,rex);
-          MyFill("ExEnergy_vs_BeamE_cm_p0_ntracks1_1_Ncut",600,-10,20,p1be*4/22,400,-10,20,rex);
-	  MyFill("ExcitationEnergy_p0_ntracks1_1_Ncut",400,-10,20,rex);
-          if(p1detid>-1 && p1detid<4) {
-	    MyFill("BeamEnergy_for_cross_section_p0_ntracks1_1_NcutQ3",300,0,55,p1be);
-	    MyFill("BeamEnergy_atCM_cross_section_p0_ntracks1_1_NcutQ3",300,0,10,p1be*4/22); 
-	    MyFill("ExEnergy_vs_BeamEnergy_p0_ntracks1_1_NcutQ3",600,-10,80,p1be,400,-10,20,rex);
-	    MyFill("ExEnergy_vs_BeamEcm_p0ntracks1_1_NcutQ3",600,-10,20,p1be*4/22,400,-10,20,rex);
-	    MyFill("ExEnergy_p0_ntracks1_1_NcutQ3",400,-10,20,rex);
-          } else if (p1detid>3 && p1detid<16) {
-	    MyFill("BeamEnergy_for_cross_section_p0_ntracks1_1_NcutR1",300,0,55,p1be);
-	    MyFill("BeamEnergy_at_CM_for_cross_section_p0_ntracks1_1_NcutR1",300,0,10,p1be*4/22); 
-	    MyFill("ExEnergy_vs_BeamEnergy_p0_ntracks1_1_NcutR1",600,-10,80,p1be,400,-10,20,rex);
-	    MyFill("ExEnergy_vs_BeamEcm_p0ntracks1_1_NcutR1",600,-10,20,p1be*4/22,400,-10,20,rex);
-	    MyFill("ExEnergy_p0_ntracks1_1_NcutR1",400,-10,20,rex);
-          } else if (p1detid>15 && p1detid<27) {
-	    MyFill("BeamEnergy_for_cross_section_p0_ntracks1_1_NcutR2",300,0,55,p1be);
-	    MyFill("BeamEnergy_at_CM_for_cross_section_p0_ntracks1_1_NcutR2",300,0,10,p1be*4/22); 
-	    MyFill("EEnergy_vs_BeamEnergy_p0_ntracks1_1_NcutR2",600,-10,80,p1be,400,-10,20,rex);
-	    MyFill("ExEnergy_vs_BeamEcm_p0ntracks1_1_NcutR2",600,-10,20,p1be*4/22,400,-10,20,rex);
-	    MyFill("ExcitationEnergy_p0_ntracks1_1_NcutR2",400,-10,20,rex);
-          }
-        }
-      } else if (IsProton.size()==2 && tracks.NTracks1==2) {//only 2 proton events
-        Double_t p1theta = tracks.TrEvent[IsProton[0]].Theta;
-        Double_t p1siphi = tracks.TrEvent[IsProton[0]].SiPhi;
-        Double_t p1pcphi = tracks.TrEvent[IsProton[0]].PCPhi;
-        Double_t p1pcz = tracks.TrEvent[IsProton[0]].PCZ;
-        Double_t p1sie = tracks.TrEvent[IsProton[0]].SiEnergy;
-        Double_t p1pce = tracks.TrEvent[IsProton[0]].PCEnergy;
-        Double_t p1be = tracks.TrEvent[IsProton[0]].BeamEnergy;
-        Double_t p1resE = tracks.TrEvent[IsProton[0]].ResidualEn;
-        Double_t p1intp = tracks.TrEvent[IsProton[0]].IntPoint;
-        Int_t p1detid = tracks.TrEvent[IsProton[0]].DetID;
-        Double_t p2theta = tracks.TrEvent[IsProton[1]].Theta;
-        Double_t p2siphi = tracks.TrEvent[IsProton[1]].SiPhi;
-        Double_t p2pcphi = tracks.TrEvent[IsProton[1]].PCPhi;
-        Double_t p2pcz = tracks.TrEvent[IsProton[1]].PCZ;
-        Double_t p2sie = tracks.TrEvent[IsProton[1]].SiEnergy;
-        Double_t p2pce = tracks.TrEvent[IsProton[1]].PCEnergy;
-        Double_t p2be = tracks.TrEvent[IsProton[1]].BeamEnergy;
-        Double_t p2resE = tracks.TrEvent[IsProton[1]].ResidualEn;
-        Double_t p2intp = tracks.TrEvent[IsProton[1]].IntPoint;
-        Int_t p2detid = tracks.TrEvent[IsProton[1]].DetID;
-        Double_t rex1 = RecoilE[0];
-        Double_t rex2 = RecoilE[1];
-
-	MyFill("IntPoint_p1_vs_IntPoint_p2",400,-10,70,p1intp,400,-10,70,p2intp);
-	MyFill("SiProtonE_de_p1",400,-1,35,p1sie,400,-0.01,0.8,p1pce*sin(p1theta));
-	MyFill("SiProtonE_theta_p1",400,-1,190,p1theta*rads2deg,400,-1,15,p1sie);
-	MyFill("SiProtonE_de_p2",400,-1,35,p2sie,400,-0.01,0.8,p2pce*sin(p2theta));
-	MyFill("SiProtonE_theta_p2",400,-1,190,p2theta*rads2deg,400,-1,15,p2sie);
-	MyFill("Theta_p1_vs_Theta_p2",400,-1,190,p1theta*rads2deg,400,-1,190,p2theta*rads2deg);
-	MyFill("SiPhi_p1_vs_SiPhi_p2",400,-1,360,p1siphi*rads2deg,400,-1,360,p2siphi*rads2deg);
-	MyFill("SiProtonE_p1_vs_SiProtonE_p2",400,-1,20,p1sie,400,-1,20,p2sie);
-	MyFill("BeamE_p1_vs_BeamE_p2",400,-1,80,p1be,400,-1,80,p2be);
-	MyFill("PCZ_p1_vs_PCZ_p2",600,-10,60,p1pcz,600,-1,60,p2pcz);
-	MyFill("Ex_p1_vs_Ex_p2",400,-10,20,rex1,400,-10,20,rex2);
-        if(needleCut->IsInside(ICne_E_diff*0.0116,p1resE) || 
-           needleCut->IsInside(ICne_E_diff*0.0116,p2resE)) {
-	  MyFill("IntPoint_p1_vs_IntPoint_p2_NeedleCut",400,-10,70,p1intp,400,-10,70,p2intp);
-	  MyFill("Theta1_vs_Theta2_NCut",400,-1,190,p1theta*rads2deg,400,-1,190,p2theta*rads2deg);
-	  MyFill("SiPhi1_vs_SiPhi2_NCut",400,-1,360,p1siphi*rads2deg,400,-1,360,p2siphi*rads2deg);
-	  MyFill("SiProtonE_p1_vs_SiProtonE_p2_NCut",400,-1,20,p1sie,400,-1,20,p2sie);
-	  MyFill("BeamE_p1_vs_BeamE_p2_NeedleCut",400,-1,80,p1be,400,-1,80,p2be);
-	  MyFill("PCZ_p1_vs_PCZ_p2_NeedleCut",600,-10,60,p1pcz,600,-1,60,p2pcz);
-	  MyFill("Ex_p1_vs_Ex_p2_NeedleCut",400,-10,20,rex1,400,-10,20,rex2);
-        }
-	MyFill("ExEnergy_vs_BeamEnergy_p1_p2_forP0",600,-10,80,p1be,400,-10,20,rex1);
-	MyFill("ExEnergy_vs_BeamEnergy_p1_p2_forP1",600,-10,80,p2be,400,-10,20,rex2);
-	MyFill("ExEnergy_vs_BeamEnergy_p1_p2",600,-10,80,p1be,400,-10,20,rex1);//dupe; RM POST
-	MyFill("ExEnergy_vs_BeamEnergy_p1_p2",600,-10,80,p2be,400,-10,20,rex2);//dupe; RM POST
-	MyFill("ExEnergy_p1_p2_forP0",400,-10,20,rex1);
-	MyFill("ExEnergy_p1_p2_forP1",400,-10,20,rex2);
-	MyFill("ExEnergy_p1_p2",400,-10,20,rex1);//dupe; REMOVE POST TEST
-	MyFill("ExEnergy_p1_p2",400,-10,20,rex2);//dupe; REMOVE POST TEST
-	MyFill("SiProtonEnergy_vs_N_p1_p2_forP0",600,0,40,ICne_E_diff*0.0116,400,-10,20,p1sie);
-	MyFill("SiProtonEnergy_vs_N_p1_p2_forP1",600,0,40,ICne_E_diff*0.0116,400,-10,20,p2sie);
-	MyFill("SiProtonEnergy_vs_N_p1_p2",600,0,40,ICne_E_diff*0.0116,400,-10,20,p1sie);//dupe
-	MyFill("SiProtonEnergy_vs_N_p1_p2",600,0,40,ICne_E_diff*0.0116,400,-10,20,p2sie);//dupe
-	MyFill("BeamE_cm_p1_p2_forP0",180,-1,15,p1be*4/22);
-	MyFill("BeamE_cm_p1_p2_forP1",180,-1,15,p2be*4/22);
-	MyFill("BeamE_cm_p1_p2",180,-1,15,p1be*4/22);//dupe
-	MyFill("BeamE_cm_p1_p2",180,-1,15,p2be*4/22);//dupe; Factor of 4/22?
-	MyFill("ResidualE_vs_N_p1_p2_forP0",600,0,40,ICne_E_diff*0.0116,600,0,40,p1resE);
-	MyFill("ResidualE_vs_N_p1_p2_forP1",600,0,40,ICne_E_diff*0.0116,600,0,40,p2resE);
-	MyFill("ResidualE_vs_N_p1_p2",600,0,40,ICne_E_diff*0.0116,600,0,40,p1resE);
-	MyFill("ResidualE_vs_N_p1_p2",600,0,40,ICne_E_diff*0.0116,600,0,40,p2resE);
-	MyFill("ResidualE_vs_N_p1_p2_largelim",600,-11,100,ICne_E_diff*0.0116,600,-11,60,p1resE);
-	MyFill("ResidualE_vs_N_p1_p2_largelim",600,-11,100,ICne_E_diff*0.0116,600,-11,60,p2resE);
-
-        //Why do these exist? Never used ever again; terminal plotting tools
-        tracks.TrEvent[IsProton[0]].BeamE_p1 = tracks.TrEvent[IsProton[0]].BeamEnergy;
-        tracks.TrEvent[IsProton[1]].BeamE_p2 = tracks.TrEvent[IsProton[1]].BeamEnergy;
-        tracks.TrEvent[IsProton[0]].SiE_p1 = tracks.TrEvent[IsProton[0]].SiEnergy;
-        tracks.TrEvent[IsProton[1]].SiE_p2 = tracks.TrEvent[IsProton[1]].SiEnergy;
-        tracks.TrEvent[IsProton[0]].ResE_p1 = tracks.TrEvent[IsProton[0]].ResidualEn;
-        tracks.TrEvent[IsProton[1]].ResE_p2 = tracks.TrEvent[IsProton[1]].ResidualEn;
-        tracks.TrEvent[IsProton[0]].Ex_p1 = RecoilE[0];
-        tracks.TrEvent[IsProton[1]].Ex_p2 = RecoilE[1];
-        tracks.TrEvent[IsProton[0]].IntP_p1 = tracks.TrEvent[IsProton[0]].IntPoint;
-        tracks.TrEvent[IsProton[1]].IntP_p2 = tracks.TrEvent[IsProton[1]].IntPoint;
-        tracks.TrEvent[IsProton[0]].Theta_p1 = tracks.TrEvent[IsProton[0]].Theta;
-        tracks.TrEvent[IsProton[1]].Theta_p2 = tracks.TrEvent[IsProton[1]].Theta;
-        tracks.TrEvent[IsProton[0]].SiPhi_p1 = tracks.TrEvent[IsProton[0]].SiPhi;
-        tracks.TrEvent[IsProton[1]].SiPhi_p2 = tracks.TrEvent[IsProton[1]].SiPhi;
-        tracks.TrEvent[IsProton[0]].PCZ_p1 = tracks.TrEvent[IsProton[0]].PCZ;
-        tracks.TrEvent[IsProton[1]].PCZ_p2 = tracks.TrEvent[IsProton[1]].PCZ;
-        Double_t deltaPhi = abs(p1siphi - p2siphi);
-        if(deltaPhi>TMath::Pi() && deltaPhi<=2*TMath::Pi()) deltaPhi = 2*TMath::Pi() - deltaPhi;
-        Double_t deltaTheta = abs(p1theta-p2theta);
-
-        Reconstruct Elastic3(M_18Ne, M_alpha, M_p, M_20Ne);
-        Elastic3.ELoss_light = proton_eloss;
-        Elastic3.ELoss_beam = Ne18_eloss;
-        Elastic3.Reconstruct20Ne(tracks, IsProton, QValue_20Ne, 0, recoil);//no intp reconstruct
-        Double_t rbe20Ne = recoil.BeamEnergy_20Ne;
-        //dupes throughout
-	MyFill("BeamEnergy_Track_vs_BeamQval_20Ne_RHeavy_P0",600,-10,80,rbe20Ne,600,-10,80,p1be);
-	MyFill("BeamEnergy_Track_vs_BeamQval_20Ne_RHeavy_P1",600,-10,80,rbe20Ne,600,-10,80,p1be);
-	MyFill("BeamEnergy_Track_vs_BeamQval_20Ne_RHeavy_all",600,-10,80,rbe20Ne,600,-10,80,p1be);
-	MyFill("BeamEnergy_Track_vs_BeamQval_20Ne_RHeavy_all",600,-10,80,rbe20Ne,600,-10,80,p1be);
-	MyFill("BeamEnergy_20Ne_RHeavy",600,-10,80,rbe20Ne);
-	MyFill("BeamEnergy_20Ne_RHeavy_cm",180,-1,15,rbe20Ne*4/22);
-	MyFill("BeamEnergy_20Ne_RHeavy_vs_NEnergy",128,0,4096,ICne_E_diff,600,-10,80,rbe20Ne);
-	MyFill("ExEnergy_vs_BeamEnergy_20Ne_RHeavy_forP0",600,-10,80,rbe20Ne,400,-10,20,rex1);
-	MyFill("ExEnergy_vs_BeamEnergy_20Ne_RHeavy_forP1",600,-10,80,rbe20Ne,400,-10,20,rex2);
-	MyFill("ExEnergy_vs_BeamEnergy_20Ne_RHeavy_p1_p2",600,-10,80,rbe20Ne,400,-10,20,rex1);
-	MyFill("ExEnergy_vs_BeamEnergy_20Ne_RHeavy_p1_p2",600,-10,80,rbe20Ne,400,-10,20,rex2);
-        Elastic3.Reconstruct20Ne(tracks, IsProton, QValue_20Ne, 1, recoil);//intp reconstruct
-        Double_t exQval20Ne = recoil.Ex_Qvalue_20Ne;
-        Double_t exrQvalsm = recoil.Ex_rec_qvalue_small;
-        Double_t exrQvallg = recoil.Ex_rec_qvalue_large;
-        Double_t bmWAQval20Ne = recoil.BeamWA_Qvalue_20Ne;
-        Double_t ex20Ne = recoil.Ex_20Ne;
-        Double_t exrlg = recoil.Ex_rec_large;
-        Double_t exrsm = recoil.Ex_rec_small;
-        Double_t bmWA20Ne = recoil.BeamWA_20Ne;
-
-	MyFill("ExEnergy_20Ne_QvalRec",600,-20,50,exQval20Ne);
-	MyFill("21Na_Ex_lg_vs_21Na_Ex_sm_QvalRec",600,-10,20,exrQvalsm,600,-10,20,exrQvallg);
-	MyFill("21Na_Ex_lg_vs_BeamEnergy_QvalRec",600,-10,80,bmWAQval20Ne,600,-10,20,exrQvallg);
-	MyFill("21Na_Ex_sm_vs_BeamEnergy_QvalRec",600,-10,80,bmWAQval20Ne,600,-10,20,exrQvalsm);
-	MyFill("21Na_Ex_large_QvalueRec",600,-10,20,exrQvallg);
-	MyFill("21Na_Ex_small_QvalueRec",600,-10,20,exrQvalsm);
-	MyFill("ExEnergy_20Ne_vs_BeamWA_QvalRec",600,-10,80,bmWAQval20Ne,600,-20,50,exQval20Ne);
-	MyFill("BeamEnergy_Track_vs_BeamWA_Qval_20Ne_P0",600,-10,80,bmWAQval20Ne,600,-10,80,p1be);
-	MyFill("BeamEnergy_Track_vs_BeamWA_Qval_20Ne_P1",600,-10,80,bmWAQval20Ne,600,-10,80,p2be);
-	MyFill("BeamEnergy_Track_vs_BeamWA_Qval_20Ne",600,-10,80,bmWAQval20Ne,600,-10,80,p1be);
-	MyFill("BeamEnergy_Track_vs_BeamWA_Qval_20Ne",600,-10,80,bmWAQval20Ne,600,-10,80,p2be);
-	MyFill("BeamWA_QvalueRec_20Ne",600,-10,80,bmWAQval20Ne);
-	MyFill("BeamWA_QvalueRec_20Ne_cm",180,-1,15,bmWAQval20Ne*4/22);
-    
-        //test spectra; REMOVE POST TEST? Yes
-	if((p1detid>-1 && p1detid<4) && (p2detid>-1 && p2detid<4)) {
-	  MyFill("ExEnergy_20Ne_Q3_testAnd",600,-20,50,ex20Ne);
-        }
-	if((p1detid>-1 || p1detid<4) || (p2detid>-1 || p2detid<4)) {
-	  MyFill("ExEnergy_20Ne_Q3_testOr",600,-20,50,ex20Ne);
-        }
-	if(p1detid>-1 && p1detid<4) {
-	  MyFill("ExEnergy_20Ne_Q3_testP0",600,-20,50,ex20Ne);
-        }
-	if(p2detid>-1 && p2detid<4) {
-	  MyFill("ExEnergy_20Ne_Q3_testP1",600,-20,50,ex20Ne);
-        }
-	if(needleCut->IsInside(ICne_E_diff*0.0116,p1resE)) {
-	   MyFill("ExEnergy_20Ne_NCut_cutP0",600,-20,50,ex20Ne);
-        }
-	if(needleCut->IsInside(ICne_E_diff*0.0116,p2resE)) {
-	   MyFill("ExEnergy_20Ne_NCut_cutP1",600,-20,50,ex20Ne);
-        }
-	if(needleCut->IsInside(ICne_E_diff*0.0116,p1resE)||
-           needleCut->IsInside(ICne_E_diff*0.0116,p2resE)) {
-	  MyFill("ExEnergy_20Ne_NCut_cutOR",600,-20,50,ex20Ne);
-        }
-	if(needleCut->IsInside(ICne_E_diff*0.0116,p1resE)&&
-           needleCut->IsInside(ICne_E_diff*0.0116,p2resE)) {
-	  MyFill("ExEnergy_20Ne_NCut_cutAND",600,-20,50,ex20Ne);
-        }
-	MyFill("21Na_Ex_lg_vs_21Na_Ex_sm",600,-10,20,exrsm,600,-10,20,exrlg);
-	MyFill("21Na_Ex_lg_vs_BeamEnergy",600,-10,80,bmWA20Ne,600,-10,20,exrlg);
-	MyFill("21Na_Ex_sm_vs_BeamEnergy",600,-10,80,bmWA20Ne,600,-10,20,exrsm);
-	MyFill("21Na_Ex_large",600,-10,20,exrlg);
-	MyFill("21Na_Ex_small",600,-10,20,exrsm);
-	MyFill("ExEnergy_20Ne_vs_BeamWA",600,-10,80,bmWA20Ne,600,-20,50,ex20Ne);
-	MyFill("ExEnergy_20Ne_vs_BeamEnergy_P0",600,-10,80,p1be,600,-20,50,ex20Ne);
-	MyFill("ExEnergy_20Ne_vs_BeamEnergy_P1",600,-10,80,p2be,600,-20,50,ex20Ne);
-	MyFill("ExEnergy_20Ne_vs_BeamEnergy_all",600,-10,80,p1be,600,-20,50,ex20Ne);//dupe
-	MyFill("ExEnergy_20Ne_vs_BeamEnergy_all",600,-10,80,p2be,600,-20,50,ex20Ne); //dupe
-	MyFill("ExEnergy_20Ne_vs_DeltaSiPhi",400,-10,360,deltaPhi*rads2deg,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_DeltaTheta",400,-10,190,deltaTheta*rads2deg,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_PCZ_P0_all",400,-10,30,p1pcz,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_PCZ_P1_all",400,-10,30,p2pcz,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_PCZ_all",400,-10,30,p1pcz,400,-10,30,ex20Ne);//dupe 
-	MyFill("ExEnergy_20Ne_vs_PCZ_all",400,-10,30,p2pcz,400,-10,30,ex20Ne); //dupe
-	MyFill("ExEnergy_20Ne_vs_SiPhi_P0",400,-10,360,p1siphi*rads2deg,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_SiPhi_P1",400,-10,360,p2siphi*rads2deg,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_SiPhi_all",400,-10,360,p1siphi*rads2deg,400,-10,30,ex20Ne);//d 
-	MyFill("ExEnergy_20Ne_vs_SiPhi_all",400,-10,360,p2siphi*rads2deg,400,-10,30,ex20Ne);//d 
-	MyFill("ExEnergy_20Ne_vs_PCPhi_P0",400,-10,360,p1pcphi*rads2deg,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_PCPhi_P1",400,-10,360,p2pcphi*rads2deg,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_PCPhi_all",400,-10,360,p1pcphi*rads2deg,400,-10,30,ex20Ne);//d 
-	MyFill("ExEnergy_20Ne_vs_PCPhi_all",400,-10,360,p2pcphi*rads2deg,400,-10,30,ex20Ne);//d 
-	MyFill("ExEnergy_20Ne_vs_Theta_P0",400,-10,180,p1theta*rads2deg,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_Theta_P1",400,-10,180,p2theta*rads2deg,400,-10,30,ex20Ne); 
-	MyFill("ExEnergy_20Ne_vs_Theta_all",400,-10,180,p1theta*rads2deg,400,-10,30,ex20Ne);//d 
-	MyFill("ExEnergy_20Ne_vs_Theta_all",400,-10,180,p2theta*rads2deg,400,-10,30,ex20Ne);//d
-        if(ResidualEnergy_Calc_20Ne) { 
-          Float_t recoilFullpath = 0.0;
-          Float_t recoilIP2Npath = 0.0;
-          Float_t beam_needle = 0.0;
-          Float_t deltaEbeam = 0.0; 
-          Float_t Efinal = 0.0;
-          Float_t E_fullpath = 0.0;
-          Float_t E_needleStart = 0.0;
-          Float_t resErecoil20Ne = 0.0; 
-          Double_t ke20Ne = recoil.KE_20Ne;
-          Double_t theta20Ne = recoil.Theta_20Ne;
-          Double_t intp20Ne = recoil.IntP_20Ne;
-	  MyFill("RecoilEnergy_vs_Theta_20Ne",300,-0.1,180,theta20Ne,300,-0.1,80,ke20Ne);
-	  MyFill("RecoilEnergy_vs_NCal_20Ne",256,0,70,ICne_E_diff_cal,300,-0.1,80,ke20Ne);
-	  if(theta20Ne != 0.0 && theta20Ne != 90.0 && theta20Ne != 180.0){
-	    recoilFullpath = 2.2/sin(theta20Ne/rads2deg);
-	    if(intp20Ne > 17.8) recoilIP2Npath = (intp20Ne - 17.8)/cos(theta20Ne/rads2deg);
-	  }
-	  if(intp20Ne <= 17.8) {
-	    E_fullpath = Ne20_eloss->GetLookupEnergy(ke20Ne,recoilFullpath);
-	    beam_needle = Ne18_eloss->GetLookupEnergy(BeamE,(ana_length-17.8));
-	    deltaEbeam = beam_needle - Ne18_eloss->GetLookupEnergy(BeamE,(ana_length-intp20Ne));
-	    if(E_fullpath <= 0.0){ 
-	      resErecoil20Ne = ke20Ne + deltaEbeam;
-	      if(p1detid>-1 && p1detid<4) {
-	        MyFill("ResE_vs_N_20Ne_Q3insideVolFullLoss",256,0,4096,ICne_E_diff,
-                                                            300,-11,50,resErecoil20Ne);
-              } else if(p1detid>3 && p1detid<16) {
-	        MyFill("ResEn_vs_N_20Ne_R1insideVolFullLoss",256,0,4096,ICne_E_diff,
-                                                             300,-11,50,resErecoil20Ne);
-              }
-	    } else{
-	      resErecoil20Ne = (ke20Ne - E_fullpath) + deltaEbeam;
-	      if(p1detid>-1 && p1detid<4) {
-	        MyFill("ResE_vs_N_20Ne_Q3insideVolSomeLoss",256,0,4096,ICne_E_diff,
-                                                            300,-11,50,resErecoil20Ne);
-              } else if(p1detid>3 && p1detid<16) {
-	        MyFill("ResE_vs_N_20Ne_R1insideVolSomeLoss",256,0,4096,ICne_E_diff,
-                                                            300,-11,50,resErecoil20Ne);
-	      }
-	    }
-	    MyFill("ResE_Recoil_vs_N_NVol_20Ne",256,0,4096,ICne_E_diff,300,-11,50,resErecoil20Ne);
-	  } else{ 
-	    E_needleStart = Ne20_eloss->GetLookupEnergy(ke20Ne,recoilIP2Npath);
-	    if(E_needleStart <= 0.0) { 
-	      resErecoil20Ne = -10.0;
-	    } else if(recoilFullpath < recoilIP2Npath) { 
-	      resErecoil20Ne = -5.0;
-	    } else { 
-	      Efinal=Ne20_eloss->GetLookupEnergy(E_needleStart,(recoilFullpath-recoilIP2Npath));
-	      if(Efinal <= 0.0){ 
-	        resErecoil20Ne = E_needleStart;
-	      } else{ 
-	        resErecoil20Ne = E_needleStart - Efinal;
-	      }
-	    } 
-	    MyFill("ResE_Recoil_vs_N_OUTSIDENeedleVol20Ne",256,0,4096,ICne_E_diff,
-                                                           300,-11,50,resErecoil20Ne);
-	  } 
-	  tracks.TrEvent[IsProton[0]].ResidualEn_20Ne = resErecoil20Ne;	     	     
-	  MyFill("ResE_vs_N_20Ne",256,0,4096,ICne_E_diff,300,-11,50,resErecoil20Ne);
-	  MyFill("ResE_vs_NCal_20Ne",600,0,40,ICne_E_diff_cal,600,0,40,resErecoil20Ne);
-	  MyFill("ResE_vs_RecoilE_20Ne",300,-0.1,80,ke20Ne,300,-11,50,resErecoil20Ne);
-	  MyFill("ResE_vs_Theta_20Ne",300,-0.1,180,theta20Ne,300,-11,50,resErecoil20Ne);
-        }
-        Elastic3.ELoss_light = NULL;
-        Elastic3.ELoss_beam = NULL;
       }
     }
   }
-  Elastic1.ELoss_light = NULL;
-  Elastic1.ELoss_beam = NULL;
+  //all histos in this section tagged with _rm (ReconstructMe) to avoid confusion in 
+  //rootfile
+  if (IsProton.size() == 1) {
+    TrackEvent proton = tracks.TrEvent[IsProton[0]];
+    IsEject.push_back(IsProton[0]);
+    Double_t sie = proton.SiEnergy;
+    Double_t be = proton.BeamEnergy;
+    Double_t intp = proton.IntPoint;
+    Double_t theta = proton.Theta;
+
+    if(tracks.NTracks1==1) {//only single proton events
+      MyFill("SiProtonE_theta_p0_ntracks1_1_rm",400,-1,190,theta*rads2deg,400,-1,15,sie);
+      MyFill("SiProtonE_vs_IntP_p0_ntracks1_1_rm",400,-1,70,intp,400,-1,15,sie);
+      MyFill("SiProtonE_vs_BeamEnergy_p0_ntracks1_1_rm",400,-1,80,be,400,-1,15,sie);
+      MyFill("BeamE_cm_p0_ntracks1_1_rm",180,-1,15,be*4/22);
+    } else if (IsAlpha.size()==2) {//only 1 proton, 2 alpha events
+      IsEject.push_back(IsAlpha[0]);
+      IsEject.push_back(IsAlpha[1]);
+      TrackEvent alpha1 = tracks.TrEvent[IsAlpha[0]];
+      TrackEvent alpha2 = tracks.TrEvent[IsAlpha[1]];
+      Double_t a1theta = alpha1.Theta;
+      Double_t a1siphi = alpha1.SiPhi;
+      Double_t a1pcphi = alpha1.PCPhi;
+      Double_t a1pcz = alpha1.PCZ;
+      Double_t a1sie = alpha1.SiEnergy;
+      Double_t a1pce = alpha1.PCEnergy;
+      Double_t a1be = alpha1.BeamEnergy;
+      Double_t a1intp = alpha1.IntPoint;
+      Int_t a1detid = alpha1.DetID;
+      Double_t a2theta = alpha2.Theta;
+      Double_t a2siphi = alpha2.SiPhi;
+      Double_t a2pcphi = alpha2.PCPhi;
+      Double_t a2pcz = alpha2.PCZ;
+      Double_t a2sie = alpha2.SiEnergy;
+      Double_t a2pce = alpha2.PCEnergy;
+      Double_t a2be = alpha2.BeamEnergy;
+      Double_t a2intp = alpha2.IntPoint;
+      Int_t a2detid = alpha2.DetID;
+
+      MyFill("IntPoint_a1_vs_IntPoint_a2_rm",400,-10,70,a1intp,400,-10,70,a2intp);
+      MyFill("SiProtonE_de_a1_rm",400,-1,35,a1sie,400,-0.01,0.8,a1pce*sin(a1theta));
+      MyFill("SiProtonE_theta_a1_rm",400,-1,190,a1theta*rads2deg,400,-1,15,a1sie);
+      MyFill("SiProtonE_de_a2_rm",400,-1,35,a2sie,400,-0.01,0.8,a2pce*sin(a2theta));
+      MyFill("SiProtonE_theta_a2_rm",400,-1,190,a2theta*rads2deg,400,-1,15,a2sie);
+      MyFill("Theta_a1_vs_Theta_a2_rm",400,-1,190,a1theta*rads2deg,400,-1,190,a2theta*rads2deg);
+      MyFill("SiPhi_a1_vs_SiPhi_a2_rm",400,-1,360,a1siphi*rads2deg,400,-1,360,a2siphi*rads2deg);
+      MyFill("SiProtonE_a1_vs_SiProtonE_a2_rm",400,-1,20,a1sie,400,-1,20,a2sie);
+      MyFill("BeamE_a1_vs_BeamE_a2_rm",400,-1,80,a1be,400,-1,80,a2be);
+      MyFill("PCZ_a1_vs_PCZ_a2_rm",600,-10,60,a1pcz,600,-1,60,a2pcz);
+      MyFill("BeamE_cm_a1_rm",180,-1,15,a1be*4/22);
+      MyFill("BeamE_cm_a1_rm",180,-1,15,a2be*4/22);
+
+      //Why do these exist? Never used ever again; terminal plotting tools
+      tracks.TrEvent[IsAlpha[0]].BeamE_p1 = alpha1.BeamEnergy;
+      tracks.TrEvent[IsAlpha[1]].BeamE_p2 = alpha2.BeamEnergy;
+      tracks.TrEvent[IsAlpha[0]].SiE_p1 = alpha1.SiEnergy;
+      tracks.TrEvent[IsAlpha[1]].SiE_p2 = alpha2.SiEnergy;
+      tracks.TrEvent[IsAlpha[0]].IntP_p1 = alpha1.IntPoint;
+      tracks.TrEvent[IsAlpha[1]].IntP_p2 = alpha2.IntPoint;
+      tracks.TrEvent[IsAlpha[0]].Theta_p1 = alpha1.Theta;
+      tracks.TrEvent[IsAlpha[1]].Theta_p2 = alpha2.Theta;
+      tracks.TrEvent[IsAlpha[0]].SiPhi_p1 = alpha1.SiPhi;
+      tracks.TrEvent[IsAlpha[1]].SiPhi_p2 = alpha2.SiPhi;
+      tracks.TrEvent[IsAlpha[0]].PCZ_p1 = alpha1.PCZ;
+      tracks.TrEvent[IsAlpha[1]].PCZ_p2 = alpha2.PCZ;
+      Double_t deltaPhi = abs(a1siphi - a2siphi);
+      if(deltaPhi>TMath::Pi() && deltaPhi<=2*TMath::Pi()) deltaPhi = 2*TMath::Pi() - deltaPhi;
+      Double_t deltaTheta = abs(a1theta-a2theta);
+
+      be8_calc.CalcRecoil_MultiParticle(tracks, IsEject, Be8_1p_2a_qval, Be8_1p_2a);
+      li5_calc.CalcRecoil_InvMassSelect(tracks, IsEject, Li5, Li5_qval);
+      Double_t exQval = Be8_1p_2a_qval.Ex_recoil;
+      Double_t bmWAQval = Be8_1p_2a_qval.BeamKE_WAIntP;
+      Double_t ex = Be8_1p_2a.Ex_recoil;
+      Double_t bmWA = Be8_1p_2a.BeamKE_WAIntP;
+
+      MyFill("Ex8Be_Qval_rm",600,-20,50,exQval);
+      MyFill("Ex8Be_vs_BeamKE_Qval_rm",600,-10,80,bmWAQval,600,-20,50,exQval);
+      MyFill("BeamKE_Track_vs_BeamKE_Qval_a1_rm",600,-10,80,bmWAQval,600,-10,80,a1be);
+      MyFill("BeamKE_Track_vs_BeamKE_Qval_a2_rm",600,-10,80,bmWAQval,600,-10,80,a2be);
+      MyFill("BeamKE_Qvalue_8Be_rm",600,-10,80,bmWAQval);
+      MyFill("BeamKE_Qvalue_8Be_cm_rm",180,-1,15,bmWAQval*4/22);
+   
+      //test spectra; REMOVE POST TEST? Yes
+      if((a1detid>-1 && a1detid<4) && (a2detid>-1 && a2detid<4)) {
+        MyFill("Ex8Be_Q3_testAnd_rm",600,-20,50,ex);
+      }
+      if((a1detid>-1 || a1detid<4) || (a2detid>-1 || a2detid<4)) {
+        MyFill("Ex8Be_Q3_testOr_rm",600,-20,50,ex);
+      }
+      if(a1detid>-1 && a1detid<4) {
+        MyFill("Ex8Be_Q3_testa1_rm",600,-20,50,ex);
+      }
+      if(a2detid>-1 && a2detid<4) {
+        MyFill("Ex8Be_Q3_testa2_rm",600,-20,50,ex);
+      }
+      MyFill("BeamKE_Track_vs_BeamKE_a1_rm",600,-10,20,bmWA,600,-10,20,a1be);
+      MyFill("BeamKE_Track_vs_BeamKE_a2_rm",600,-10,20,bmWA,600,-10,20,a2be);
+      MyFill("Ex8Be_vs_BeamKE_rm",600,-10,80,bmWA,600,-20,50,ex);
+      MyFill("Ex8Be_vs_BeamKE_tracked_a1_rm",600,-10,80,a1be,600,-20,50,ex);
+      MyFill("Ex8Be_vs_BeamKE_tracked_a1_rm",600,-10,80,a2be,600,-20,50,ex);
+      MyFill("Ex8Be_vs_DeltaSiPhi_rm",400,-10,360,deltaPhi*rads2deg,400,-10,30,ex); 
+      MyFill("Ex8Be_vs_DeltaTheta_rm",400,-10,190,deltaTheta*rads2deg,400,-10,30,ex); 
+      MyFill("Ex8Be_vs_PCZ_a1_all_rm",400,-10,30,a1pcz,400,-10,30,ex); 
+      MyFill("Ex8Be_vs_PCZ_a2_all_rm",400,-10,30,a2pcz,400,-10,30,ex); 
+      MyFill("Ex8Be_vs_SiPhi_a1_rm",400,-10,360,a1siphi*rads2deg,400,-10,30,ex); 
+      MyFill("Ex8Be_vs_SiPhi_a2_rm",400,-10,360,a2siphi*rads2deg,400,-10,30,ex); 
+      MyFill("Ex8Be_vs_PCPhi_a1_rm",400,-10,360,a1pcphi*rads2deg,400,-10,30,ex); 
+      MyFill("Ex8Be_vs_PCPhi_a2_rm",400,-10,360,a2pcphi*rads2deg,400,-10,30,ex); 
+      MyFill("Ex8Be_vs_Theta_a1_rm",400,-10,180,a1theta*rads2deg,400,-10,30,ex); 
+      MyFill("Ex8Be_vs_Theta_a2_rm",400,-10,180,a2theta*rads2deg,400,-10,30,ex); 
+
+      Double_t ker = Be8_1p_2a.KE_recoil;
+      Double_t theta = Be8_1p_2a.Theta;
+      MyFill("8BeKE_vs_Theta_8Be_rm",300,-0.1,180,theta,300,-0.1,80,ker);
+    }
+  }
+  be8_calc.ELoss_eject = NULL;
+  be8_calc.ELoss_eject2 = NULL;
+  be8_calc.ELoss_beam = NULL;
+  li5_calc.ELoss_eject = NULL;
+  li5_calc.ELoss_eject2 = NULL;
+  li5_calc.ELoss_beam = NULL;
 }
 
 /*AlphaScatter()
@@ -1413,10 +1322,9 @@ void analyzer::ReconstructMe() {
  *Need to check, but my guess is its for a calibration
  *or as a way to normalize for cross sections
  */
-void analyzer::AlphaScatter() {
+void analyzer::ElasticScatter() {
 
   for(int i=0; i<tracks.NTracks1; i++) {
-    Int_t detid = tracks.TrEvent[i].DetID;
     Int_t wireid = tracks.TrEvent[i].DetID;
     Double_t pcz = tracks.TrEvent[i].PCZ;
     Double_t sie = tracks.TrEvent[i].SiEnergy;
@@ -1428,108 +1336,24 @@ void analyzer::AlphaScatter() {
     Int_t wirePlus3 = (wireid+2)%24;
     Int_t wireMinus3 = (wireid-2)%24;
     if(PCGoodEnergy[wirePlus3]>0 || PCGoodEnergy[wireMinus3]>0) continue;
-    if(alphaCut->IsInside(sie, pce*sin(theta))) {
-      MyFill("4He_E_si",600,0,35,sie);
-      MyFill("4He_E_si_vs_Theta",600,0,600,theta*rads2deg,600,0,35,sie);
-      MyFill("4He_E_si_vs_IntPoint",600,0,60,intp,600,0,35,sie);
-      if(detid<4 && detid>-1){
-        MyFill("4He_E_si_Q3",600,0,35,sie);
-        MyFill("4He_E_si_vs_Theta_Q3",600,0,600,theta*rads2deg,600,0,35,sie);
-        MyFill("4He_E_si_vs_IntPoint_Q3",600,0,50,intp,600,0,35,sie);
-      }else if(detid<16 && detid>3){
-        MyFill("4He_E_si_SX3_1",600,0,35,sie);
-        MyFill("4He_E_si_vs_Theta_SX3_1",600,0,600,theta*rads2deg,600,0,35,sie);
-        MyFill("4He_E_si_vs_IntPoint_SX3_1",600,0,60,intp,600,0,35,sie);
-      }else if(detid<28 && detid>15){
-        MyFill("4He_E_si_SX3_2",600,0,35,sie);
-        MyFill("4He_E_si_vs_Theta_SX3_2",600,0,600,theta*rads2deg,600,0,35,sie);
-        MyFill("4He_E_si_vs_IntPoint_SX3_2",600,0,60,intp,600,0,35,sie);
-      }
-      if (sie>0.0 && sie<40.0 && pathL>0.0 && pathL>100.0 && intp>0.0 && intp<ana_length && 
+    if(deutCut->IsInside(sie, pce*sin(theta))) {
+      MyFill("Elastic_E_si",600,0,35,sie);
+      MyFill("Elastic_E_si_vs_Theta",600,0,600,theta*rads2deg,600,0,35,sie);
+      MyFill("Elastic_E_si_vs_IntPoint",600,0,60,intp,600,0,35,sie);
+      if (sie>0.0 && sie<40.0 && pathL>0.0 && pathL<100.0 && intp>0.0 && intp<ana_length && 
           be>0.0 && be<BeamE && pcz>0.0 && pce>0.0) {
-        Float_t E_4Herxn = alpha_eloss->GetLookupEnergy(sie, -pathL);
-        tracks.TrEvent[i].LightParEnergy = E_4Herxn;
-	MyFill("4He_E_rxn",600,0,35,E_4Herxn);
-	MyFill("4He_E_rxn_vs_Theta",600,0,600,theta*rads2deg,600,0,30,E_4Herxn);
-	MyFill("4He_E_rxn_vs_IntPoint",600,0,50,intp,600,0,30,E_4Herxn);
-	if(detid<4 && detid>-1){
-	  MyFill("4He_E_rxn_Q3",600,0,30,E_4Herxn);
-	  MyFill("4He_E_rxn_vs_Theta_Q3",600,0,80,theta*rads2deg,600,0,30,E_4Herxn);
-	  MyFill("4He_E_rxn_vs_IntPoint_Q3",600,0,50,intp,600,0,30,E_4Herxn);
-	}else if(detid<16 && detid>3){
-	  MyFill("4He_E_rxn_SX3_1",600,0,30,E_4Herxn);
-	  MyFill("4He_E_rxn_vs_Theta_SX3_1",600,0,80,theta*rads2deg,600,0,30,E_4Herxn);
-	  MyFill("4He_E_rxn_vs_IntPoint_SX3_1",600,0,50,intp,600,0,30,E_4Herxn);
-	}else if(detid<28 && detid>15){
-	  MyFill("4He_E_rxn_SX3_2",600,0,30,E_4Herxn);
-	  MyFill("4He_E_rxn_vs_Theta_SX3_2",600,0,600,theta*rads2deg,600,0,30,E_4Herxn);	
-	  MyFill("4He_E_rxn_vs_IntPoint_SX3_2",600,0,50,intp,600,0,30,E_4Herxn);
-	}
+        Float_t E_erxn = deuteron_eloss->GetLookupEnergy(sie, -pathL);
+	MyFill("Elastic_E_rxn",600,0,35,E_erxn);
+	MyFill("Elastic_E_rxn_vs_Theta",600,0,600,theta*rads2deg,600,0,30,E_erxn);
+	MyFill("4He_E_rxn_vs_IntPoint",600,0,50,intp,600,0,30,E_erxn);
 
-	//Beam Energy Calculation from the Elastic scattering: 
-	Float_t EBeam4He = ((M_18Ne+M_alpha)*(M_18Ne+M_alpha)*E_4Herxn)/
-                          (4.0*M_18Ne*M_alpha*cos(theta)*cos(theta));
-	tracks.TrEvent[i].BeamQvalue = EBeam4He;
-	//Beam Theta Calculation from the Elastic scattering:
-	Float_t ThetaB4He = asin((sin(theta)*sqrt(M_alpha/M_18Ne))/
-                                sqrt((EBeam4He/E_4Herxn)-1.0))*rads2deg;
-	tracks.TrEvent[i].ThetaQvalue = ThetaB4He;
-	//4He energy calculated from elastic scattering assuming known SRIM beam energy
-	Float_t E4He_elas = (4.0*M_alpha*M_18Ne*be*cos(theta)*cos(theta))/
-                                     ((M_18Ne+M_alpha)*(M_18Ne+M_alpha));
-	tracks.TrEvent[i].HeEnergyQvalue =  E4He_elas;
+	Float_t EBeame = ((m_7be+m_d)*(m_7be+m_d)*E_erxn)/
+                          (4.0*m_7be*m_d*cos(theta)*cos(theta));
 	// Recoil Kinematics
-	Float_t ERecoil = EBeam4He - E_4Herxn;
-	MyFill("4He_Elastic",600,-10,40,E4He_elas);
-	if(detid<4 && detid>-1) MyFill("4He_Elastic_q3",600,-10,40,E4He_elas);
-	else if(detid<16 && detid>3) MyFill("4He_Elastic_r1",600,-10,40,E4He_elas);
-	else if(detid<28 && detid>15) MyFill("4He_Elastic_r2",600,-10,40,E4He_elas);
+	Float_t E7be_elas = EBeame - E_erxn;
+	MyFill("Elastic_7Be",600,-10,40,E7be_elas);
 
-	MyFill("LightParrxn_vs_Elastic_4He_E",600,0,30,E4He_elas,600,0,30,E_4Herxn);
-	if(detid<4 && detid>-1){
-	  MyFill("LightParrxn_vs_Elastic4He_EQ3",600,0,30,E4He_elas,600,0,30,E_4Herxn);
-	  MyFill("RecE_v_(BeamQval-LightParE)Q3",600,-5,30,(EBeam4He-E_4Herxn),600,-5,30,ERecoil);
-	  MyFill("RecE_vs_(BeamTrack - LightParE)Q3",600,-5,30,(be - E_4Herxn),600,-5,30,ERecoil);
-	  MyFill("RecE_vs_BeamTrack_ElasticScatQ3",600,-5,80,be,600,-5,30,ERecoil);
-	  MyFill("RecE_vs_BeamQval_ElasticScatQ3",600,-5,80,EBeam4He,600,-5,30,ERecoil);
-	  MyFill("RecE_vs_LightParE_ElasticScatQ3",600,-5,30,E_4Herxn,600,-5,30,ERecoil);
-	  MyFill("RecE_vs_LightParQval_ElasticScatQ3",600,-5,30,E4He_elas,600,-5,30,ERecoil);
-	  MyFill("RecE_vs_N_ElasticQ3",256,0,4096,ICne_E_diff,600,-0.1,20,ERecoil);
-	  MyFill("SiE_tot_vs_N_ElasticQ3",256,0,4096,ICne_E_diff,600,-0.1,30,E_4Herxn);
-	  MyFill("SiE_tot_vs_NCal_ElasticQ3",256,0,70,ICne_E_diff_cal,600,-0.1,30,E_4Herxn);
-	}else if(detid<16 && detid>3){
-	  MyFill("LightParrxn_vs_Elastic4He_ESX31",600,0,30,E4He_elas,600,0,30,E_4Herxn);
-	  MyFill("RecE_vs_N_Elastic_SX3_1",256,0,4096,ICne_E_diff,600,-0.1,30,ERecoil);
-	  MyFill("SiE_tot_vs_N_Elastic_SX3_1",256,0,4096,ICne_E_diff,600,-0.1,30,E_4Herxn);
-	  MyFill("SiE_tot_vs_NCal_Elastic_SX3_1",256,0,70,ICne_E_diff_cal,600,-0.1,30,E_4Herxn);
-	}else if(detid<28 && detid>15){
-	  MyFill("LightParrxn_vs_Elastic4He_ESX32",600,0,30,E4He_elas,600,0,30,E_4Herxn);
-	}if(detid<16 && detid>-1){
-	  MyFill("LightParrxn_vs_Elastic4He_E_Q3&&SX31",600,0,30,E4He_elas,600,0,30,E_4Herxn);
-	  MyFill("RecE_vs_N_Elastic_Q3&&SX31",256,0,4096,ICne_E_diff,600,-5,30,ERecoil);
-	  MyFill("SiE_tot_vs_N_Elastic_Q3&&SX31",256,0,4096,ICne_E_diff,600,-5,30,E_4Herxn);
-	  MyFill("SiE_tot_vs_NCal_Elastic_Q3&&SX31",256,0,70,ICne_E_diff_cal,600,-5,30,E_4Herxn);
-	}
-	MyFill("Beam_4He_Energy",600,-1,80,EBeam4He);
-	MyFill("BeamTrack_Energy_ElasticScat",600,-1,80,be);
-	MyFill("BeamEnergy_vs_Beam_4He_Energy",600,-1,80,EBeam4He,600,-1,80,be);
-	if(detid<4 && detid>-1){
-	  MyFill("Beam_4He_Energy_Q3",600,-1,80,EBeam4He);
-	  MyFill("BeamTrack_Energy_ElasticScat_Q3",600,-1,80,be);
-	  MyFill("BeamEnergy_vs_Beam_4He_Energy_Q3",600,-1,80,EBeam4He,600,-1,80,be);
-	}else if(detid<16 && detid>3){
-	  MyFill("Beam_4He_Energy_SX3_1",600,-1,80,EBeam4He);
-	  MyFill("BeamTrack_Energy_ElasticScat_SX3_1",600,-1,80,be);
-	  MyFill("BeamEnergy_vs_Beam_4He_Energy_SX3_1",600,-1,80,EBeam4He,600,-1,80,be);
-	}else if(detid<28 && detid>15){
-	  MyFill("Beam_4He_Energy_SX3_2",600,-1,80,EBeam4He);
-	  MyFill("BeamTrack_Energy_ElasticScat_SX3_2",600,-1,80,be);
-	  MyFill("BeamEnergy_vs_Beam_4He_Energy_SX3_2",600,-1,80,EBeam4He,600,-1,80,be);
-	}if(detid<16 && detid>-1){
-	  MyFill("Beam_4He_Energy_Q3_&&_SX3_1",600,-1,80,EBeam4He);
-	  MyFill("BeamTrack_Energy_ElasticScat_Q3_&&_SX3_1",600,-1,80,be);
-	  MyFill("BeamEnergy_vs_Beam_4He_Energy_Q3_&&_SX3_1",600,-1,80,EBeam4He,600,-1,80,be);
-	}
+	MyFill("EjectE_vs_RecoilE_Elastic",600,0,30,E7be_elas,600,0,30,E_erxn);
       }
     } 
   }
@@ -1550,7 +1374,6 @@ void analyzer::run() {
   PC.ReadHit = 0;
   CsI.ReadHit = 0;
 
-  if(cutFlag) getCut();
 
   if(ReadPCWire) {
     WireRadii = GetPCWireRadius();
@@ -1560,17 +1383,19 @@ void analyzer::run() {
     }
   }
 
-  Ne18_eloss = new LookUp("../anasen_software/srim_files/18Ne_in_HeCO2_348Torr_18Nerun_09122018.eloss", M_18Ne);  
-  Ne18_eloss->InitializeLookupTables(90.0,760.0,0.02,0.04);  
-  Na21_eloss = new LookUp("../anasen_software/srim_files/21Na_in_HeCO2_348Torr_18Nerun_02192019.eloss", M_21Na);  
-  Na21_eloss->InitializeLookupTables(90.0,760.0,0.02,0.04); 
-  Ne20_eloss = new LookUp("../anasen_software/srim_files/20Ne_in_HeCO2_348Torr_18Nerun_02192019.eloss", M_20Ne);  
-  Ne20_eloss->InitializeLookupTables(90.0,760.0,0.02,0.04); 
-  alpha_eloss = new LookUp("../anasen_software/srim_files/He_in_HeCO2_379Torr_allruns_09122018.eloss", M_alpha);
-  alpha_eloss->InitializeLookupTables(60.0,2400.0,0.02,0.04); 
-  proton_eloss = new LookUp("../anasen_software/srim_files/H_in_HeCO2_379Torr_allruns_09122018.eloss",M_p);
-  proton_eloss->InitializeLookupTables(40.0,15000.0,0.02,0.04);
-
+  //for init:  Large values that are within the SRIM file range and the ion has to go far enough 
+  //that it stops. Step size should be small
+  be7_eloss = new LookUp(be7eloss_name, m_7be);  
+  be7_eloss->InitializeLookupTables(30.0,200.0,0.01,0.04);  
+  alpha_eloss = new LookUp(he4eloss_name, m_alpha);
+  alpha_eloss->InitializeLookupTables(30.0,900.0,0.01,0.04); 
+  he3_eloss = new LookUp(he3eloss_name, m_3he);
+  he3_eloss->InitializeLookupTables(30.0,1200.0,0.02,0.04);
+  proton_eloss = new LookUp(peloss_name, m_p);
+  proton_eloss->InitializeLookupTables(30.0, 11900.0, 0.05, 0.01);
+  deuteron_eloss = new LookUp(deloss_name, m_d);
+  deuteron_eloss->InitializeLookupTables(18.0, 6600.0, 0.02, 0.04);
+  
   string inputlistName;
   string outputName;
   cout<<"Enter inputlist file name: ";
@@ -1591,17 +1416,20 @@ void analyzer::run() {
   outTree->Branch("NTracks3", &tracks.NTracks3, "NTracks3/I");
   outTree->Branch("NTracks4", &tracks.NTracks4, "NTracks4/I");
   outTree->Branch("TrackEvents", &tracks.TrEvent);
-  outTree->Branch("recoil", &recoil);
+  outTree->Branch("Be8_1p", &Be8_1p);
+  outTree->Branch("Be8_1p_qval", &Be8_1p_qval);
+  outTree->Branch("Be8_1p_2a", &Be8_1p_2a);
+  outTree->Branch("Be8_1p_2a_qval", &Be8_1p_2a_qval);
+  outTree->Branch("Li6", &Li6);
+  outTree->Branch("Li6_qval", &Li6_qval);
+  outTree->Branch("Li5", &Li5);
+  outTree->Branch("Li5_qval", &Li5_qval);
+  outTree->Branch("Be8_1p_any", &Be8_1p_any);
+  outTree->Branch("Be8_1p_any_qval", &Be8_1p_any_qval);
   outTree->Branch("RFTime", &RFTime, "RFTime/I");
   outTree->Branch("MCPTime", &MCPTime, "MCPTime/I");
   outTree->Branch("TDC2", &TDC2, "TDC2/I");
-  outTree->Branch("ICne_En_diff", &ICne_E_diff, "ICne_En_diff/D");
-  outTree->Branch("ICne_E_sum", &ICne_E_sum, "ICne_E_sum/D");
-  outTree->Branch("ICne_T_diff", &ICne_T_diff, "ICne_T_diff/D");
-  outTree->Branch("ICne_T_sum", &ICne_T_sum, "ICne_T_sum/D");
 
-  rootObj->Add(protonCut); 
-  rootObj->Add(alphaCut); rootObj->Add(needleCut);
 
   ifstream inputList;
   inputList.open(inputlistname);
@@ -1609,6 +1437,19 @@ void analyzer::run() {
     cout<<"List of rootfiles could not be opened!"<<endl;
     exit(EXIT_FAILURE);
   }
+
+  if(cutFlag) {
+    string protonCutfile, alphaCutfile, he3Cutfile, deutCutfile, joinedAlphaCutfile;
+    getline(inputList, protonCutfile);
+    getline(inputList, alphaCutfile);
+    getline(inputList, he3Cutfile);
+    getline(inputList, deutCutfile);
+    getline(inputList, joinedAlphaCutfile);
+    getCut(protonCutfile, alphaCutfile, he3Cutfile, deutCutfile, joinedAlphaCutfile);
+  }
+  rootObj->Add(protonCut); rootObj->Add(alphaCut); rootObj->Add(he3Cut);
+  rootObj->Add(joinedAlphaCut);
+
   string rootName;
   char rootname[100];
 
@@ -1634,14 +1475,8 @@ void analyzer::run() {
     inputTree->SetBranchAddress("Si.Hit", &Si.ReadHit);
     inputTree->SetBranchAddress("PC.NPCHits", &PC.NPCHits);
     inputTree->SetBranchAddress("PC.Hit", &PC.ReadHit);
-    //inputTree->SetBranchAddress("CsI.NCsIHits", &CsI.NCsIHits);
-    //inputTree->SetBranchAddress("CsI.Hit", &CsI.ReadHit);
     inputTree->SetBranchAddress("RFTime", &input_RFTime);
     inputTree->SetBranchAddress("MCPTime", &input_MCPTime);
-    //inputTree->SetBranchAddress("ICne_En_diff", &input_ICne_E_diff);
-    //inputTree->SetBranchAddress("ICne_En_sum", &input_ICne_E_sum);
-    //inputTree->SetBranchAddress("ICne_Ti_diff", &input_ICne_T_diff);
-    //inputTree->SetBranchAddress("ICne_Ti_sum", &input_ICne_T_sum);
 
     Int_t nentries = inputTree->GetEntries();
     float blentries = nentries;
@@ -1652,33 +1487,45 @@ void analyzer::run() {
       inputTree->GetEvent(entry);
 
       SiEnergy_vec = vector<vector<Double_t>>(28, vector<Double_t>(0));
-    
-      bool keep_event = MCP_RF();
-      if(!keep_event) continue;
-       
       tracks.ZeroTrack();
-      recoilReset();
-      Track1();
-      Track2();
-      Track3();
+      recoilReset(Li6);
+      recoilReset(Li6_qval);
+      recoilReset(Li5);
+      recoilReset(Li5_qval);
+      recoilReset(Be8_1p);
+      recoilReset(Be8_1p_qval);
+      recoilReset(Be8_1p_2a);
+      recoilReset(Be8_1p_2a_qval);
+      recoilReset(Be8_1p_any);
+      recoilReset(Be8_1p_any_qval);
+    
+      if(MCP_RF()){        
+        Track1();
+        Track2();
+        Track3();
       
-      if(PCPlots) PCPlotting();
+        if(PCPlots) PCPlotting();
       
-      TrackCalc();
+        TrackCalc();
 
-      if(PCWireCal) PCWireCalibration();
-      if(FillEdE_cor) EdEcor();
-      if(PCPlots_2) PCPlotting2();
-      if(ResidualEnergy_Calc) CalculateResidE();
-      if(Reconstruction_Session) ReconstructMe();
-      if(Elastic_Scat_Alpha) AlphaScatter();
+        if(PCWireCal) PCWireCalibration();
+        if(FillEdE_cor) EdEcor();
+        if(PCPlots_2) PCPlotting2();
+        if(ResidualEnergy_Calc) {
+          CalcRecoilE();
+          //CalcSmAngleAlphas();
+        }
+        if(Reconstruction_Session) ReconstructMe();
+        if(Elastic_Scat_Alpha) ElasticScatter();
 
-      if(FillTree) outTree->Fill();
+        if(FillTree) outTree->Fill();
+      }
     }//end event loop
+    cout<<endl;
   }//end file list loop
   inputList.close();
   outFile->cd();
-  outTree->Write();
+  outTree->Write(outTree->GetName(), TObject::kOverwrite);
   rootObj->Write();
   outFile->Close();
   cout<<"All Root objects are written to: "<<outputName<<endl;

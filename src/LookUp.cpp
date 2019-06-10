@@ -78,14 +78,8 @@ LookUp::LookUp(string Eloss_file, Double_t InputMass) {
     EvD = new TGraph();
   }
 }
-LookUp::~LookUp() {
-  EtoDtab_v.clear();
-  DtoEtab_v.clear();
-  IonEnergy_v.clear();
-  dEdx_e_v.clear();
-  dEdx_n_v.clear();
+LookUp::~LookUp(){
 }
-
 /////////////////////////////////// SPLINE INTERPOLATION /////////////////////////////////////////
 double LookUp::GetEnergyLoss(double energy /*MeV*/, double distance /*cm*/)
 {
@@ -111,7 +105,7 @@ double LookUp::GetEnergyLoss(double energy /*MeV*/, double distance /*cm*/)
       last_point = p;
       break;
     }
-  } 
+  }
   // If after this two loop i is still -1 it means the energy was out of range.
   
   if(i==-1){
@@ -350,16 +344,14 @@ Double_t LookUp::GetLookupEnergy(Double_t InitialEnergy, Double_t distance){
   // Find the distance for which the initial energy is matched, interpolating 
   index = (int)floor((MaximumEnergy-InitialEnergy) / DeltaE) ;
   D1=EtoDtab_v[index]; D2=EtoDtab_v[index+1];
-
   E1=MaximumEnergy-index*DeltaE; E2=MaximumEnergy-(index+1)*DeltaE; 
 
   D = ( InitialEnergy - E1 ) / ( E2 - E1 ) * (D2-D1) + D1 ;
 
-
   //Still in the table ?
   if(((D+distance <=0)) || ((D+distance)> MaximumDistance)){
-    cout<<"i m here"<<endl;
-    return(0.);
+    cout<<"i m here"<<(distance)<<" "<<D<<" Energy: "<<InitialEnergy<<endl;
+    return 0.;
   }
 
   // Lookup what energy is reached for (D + distance) and interpolate

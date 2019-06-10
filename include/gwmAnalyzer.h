@@ -58,8 +58,10 @@ class analyzer {
     Int_t FindGoodCsI(Double_t phi, CsIHit& CsI);
     Int_t FindMaxSi(Double_t phi, SiHit& Si);
     vector<Int_t> FindGoodCsI_Vector(Double_t phi, CsIHit& CsI);
-    void getCut();
-    void recoilReset();
+    void getCut(string pcutfile, string acutfile, string he3cutfile, string dcutfile, string 
+                jacutfile);
+    void recoilReset(RecoilEvent &recoil);
+    bool RecoverTrack1(TrackEvent track1, TrackEvent &track2);
     bool MCP_RF();
     void Track1();
     void Track2();
@@ -69,9 +71,10 @@ class analyzer {
     void TrackCalc();
     void PCWireCalibration();
     void PCPlotting2();
-    void CalculateResidE();
+    void CalcRecoilE();
+    void CalcSmAngleAlphas();
     void ReconstructMe();
-    void AlphaScatter();
+    void ElasticScatter();
     void MyFill(string name, int binsX, double lowX, double highX, double valueX);
     void MyFill(string name, int binsX, double lowX, double highX, double valueX,
                 int binsY, double lowY, double highY, double valueY);
@@ -80,7 +83,7 @@ class analyzer {
     
     
     /************Flags****************/
-    int PCPlots, PCPlots_2, Beam_and_Eloss, FillTree, FillEdE_cor, CheckBasic, MCP_RF_Cut,
+    int PCPlots, PCPlots_2, Beam_and_Eloss, FillTree, FillEdE_cor, MCP_RF_Cut,
         ReadPCWire, PCWireCal, ResidualEnergy_Calc, ResidualEnergy_Calc_20Ne, 
         Reconstruction_Session, Elastic_Scat_Alpha, cutFlag;
 
@@ -89,23 +92,25 @@ class analyzer {
     const int MaxSiHits = 500, MaxADCHits = 500, MaxTDCHits = 500, MaxTracks = 100, 
               MaxCsIHits = 500, DiffIP = 2;
     const static int NPCWires = 24;
+    string be7eloss_name, he3eloss_name, he4eloss_name, peloss_name, deloss_name;
 
     //Conversions, physical measurements
     const float rads2deg = 57.27272727, pcr = 3.846264509, ana_length = 55.0545;
 
     //Nuclear Masses (MeV)
-    const float M_p = 938.27197, M_alpha = 3727.37892, M_160 = 14895.079, M_19F = 17692.29956,
-                M_18Ne = 16767.09961, M_21Na = 19553.56837, M_14N = 13040.20242, 
-                M_17O = 15830.50124, M_20Ne = 18617.72807;
+    const float m_p = 938.27206671856, m_alpha = 3727.37929745092, m_7be = 6534.1836677282,
+                m_3he = 2808.3915032078, m_8be = 7454.85043438849, m_6li = 5601.518452737,
+                m_7li = 6533.83277448969, m_d = 1875.61291385342, m_5he = 4667.67970996292,
+                m_n = 1875.61291385342, m_5li = 4667.6163636366931;
 
     //Beam & Reaction Parameters (MeV)
-    const float BeamE = 72.34, QValue = 2.63819, QValue_20Ne = 0.206519; 
+    const float BeamE = 17.19, QValue_8Be = 16.674, QValue_6Li = -0.1133726; 
 
     /**********Private Variables***********/
     //Storage
     TList *fhlist;
     map<string, TH1*> fhmap;
-    TCutG *protonCut, *alphaCut, *needleCut;
+    TCutG *protonCut, *alphaCut, *he3Cut, *deutCut, *joinedAlphaCut;
     TObjArray *rootObj;
     vector<Double_t> WireRadii;
     
@@ -115,17 +120,14 @@ class analyzer {
     CsIHit CsI;
 
     //Energy loss lookups
-    LookUp *Ne18_eloss, *Na21_eloss, *Ne20_eloss, *alpha_eloss, *proton_eloss;
+    LookUp *be7_eloss, *alpha_eloss, *proton_eloss, *deuteron_eloss, *he3_eloss;
 
     //Tree and Histogram Parameters
     Track tracks;
     Int_t RFTime, MCPTime, TDC2, input_RFTime, input_MCPTime, input_TDC2;
     
-    
-    Double_t IC_needle, R_IC_needle, ICne_E_diff, ICne_E_sum, ICne_T_diff, ICne_T_sum,
-             input_ICne_E_diff, input_ICne_E_sum, input_ICne_T_diff, input_ICne_T_sum, 
-             ICne_E_diff_cal;
-    RecoilEvent recoil;
+    RecoilEvent Li6, Be8_1p, Be8_1p_2a, Li6_qval, Be8_1p_qval, Be8_1p_2a_qval, Be8_1p_any,
+                Be8_1p_any_qval, Li5, Li5_qval;
 
     Double_t PCGoodEnergy[NPCWires], PCGoodPCZ[NPCWires];
     vector<vector<Double_t>> SiEnergy_vec;
