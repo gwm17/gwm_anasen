@@ -1,0 +1,8 @@
+###folders###
+rootfiles/
+
+###compiled###
+*.o
+*.cxx
+*.pcm
+analyzer
