@@ -1379,7 +1379,7 @@ void analyzer::run() {
     WireRadii = GetPCWireRadius();
   } else {
     for(int wire=0; wire<NPCWires; wire++) {
-      WireRadii.push_back(pcr);
+      WireRadii.push_back(Pcr);
     }
   }
 
