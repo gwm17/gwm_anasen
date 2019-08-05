@@ -1,0 +1,8 @@
+./cuts/protonCut.root
+./cuts/alphaCut.root
+./cuts/he3Cut.root
+./cuts/deutCut.root
+./cuts/joinedAlphaCut.root
+/data1/gwm17/7Be_d/rootfiles/MainA.root
+/data1/gwm17/7Be_d/rootfiles/MainB.root
+/data1/gwm17/7Be_d/rootfiles/MainC.root
