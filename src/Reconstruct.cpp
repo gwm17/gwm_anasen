@@ -212,7 +212,7 @@ void Reconstruct::CalcRecoil_MultiParticle(Track Tr, vector<Int_t> IsEject,
     TVector3 eject1_V(0.,0.,0.), eject2_V(0.,0.,0.), eject3_V(0.,0.,0.), Sum_eject_V(0.,0.,0.);
  
     Target_LV.SetPxPyPzE(0.0,0.0,0.0, m_target);
-    Double_t IntPoint = 0.0, BeamE_tot = 0.0, BeamE_tot_qval = 0.0,BeamWA = 0.0, 
+    Double_t BeamE_tot = 0.0, BeamE_tot_qval = 0.0, 
              E_eject1_rxn = 0.0, E_eject2_rxn = 0.0, E_eject3_rxn = 0.0, E_eject_tot = 0.0;
     
     Double_t BeamKE_avg = 0.0;

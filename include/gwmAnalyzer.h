@@ -95,7 +95,7 @@ class analyzer {
     string be7eloss_name, he3eloss_name, he4eloss_name, peloss_name, deloss_name;
 
     //Conversions, physical measurements
-    const float rads2deg = 57.27272727, pcr = 3.846264509, ana_length = 55.0545;
+    const float rads2deg = 57.27272727, Pcr = 3.846264509, ana_length = 55.0545;
 
     //Nuclear Masses (MeV)
     const float m_p = 938.27206671856, m_alpha = 3727.37929745092, m_7be = 6534.1836677282,

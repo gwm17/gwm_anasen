@@ -78,11 +78,13 @@ void analyzer::SetFlag(string flagName) {
  *Cuts can all be in one file or in many files, just make sure names match
  */
 void analyzer::getCut(string pcutfile, string acutfile, string he3cutfile, string dcutfile, string                      jacutfile) {
+  cout<<"---------------Cuts---------------"<<endl;
   cout<<"Proton cut file: "<<pcutfile<<endl;
   cout<<"Alpha cut file: "<<acutfile<<endl;
   cout<<"He3 cut file: "<<he3cutfile<<endl;
   cout<<"Deuteron cut file: "<<dcutfile<<endl;
   cout<<"Joined Alpha cut file: "<<jacutfile<<endl;
+  cout<<"----------------------------------"<<endl;
   char protonname[pcutfile.length()], alphaname[acutfile.length()], he3name[he3cutfile.length()];
   char deuteronname[dcutfile.length()], janame[jacutfile.length()];
 
@@ -1082,11 +1084,6 @@ void analyzer::CalcSmAngleAlphas() {
   vector<int> IsT2alpha;
   vector<int> IsEject;
 
-  Double_t alpha_pce = 0.0;
-  Double_t alpha_t = 0.0;
-  Double_t alpha_be = 0.0;
-  Double_t alpha_pl = 0.0;
-  Double_t alpha_phi = 0.0;
 
   for(int i=0; i<tracks.NTracks1; i++) {
     Int_t detid = tracks.TrEvent[i].DetID;
@@ -1098,8 +1095,6 @@ void analyzer::CalcSmAngleAlphas() {
     Double_t siz = tracks.TrEvent[i].SiZ;
     Double_t theta = tracks.TrEvent[i].Theta;
     Double_t intp = tracks.TrEvent[i].IntPoint;
-    Double_t pl = tracks.TrEvent[i].PathLength;
-    Double_t phi = tracks.TrEvent[i].SiPhi;
     if(detid>-1 && detid<28 && pcz>0.0 && siz>=0.0 && intp>0.0 && intp<ana_length && 
        be>0.0 && be<BeamE && sir>4.0 && sir<11.0 && tracks.NTracks1 == 2) {
       MyFill("Ede_8be_glob_p",300,0,30,sie/2.0,300,0,0.3,pce/2.0*sin(theta));
@@ -1108,11 +1103,6 @@ void analyzer::CalcSmAngleAlphas() {
       } else if(alphaCut->IsInside(sie/2.0, (pce/2.0)*sin(theta))){
         tracks.TrEvent[i].PCEnergy = pce/2.0;
         IsT1alpha.push_back(i);
-        alpha_pce = pce/2.0;
-        alpha_t = theta;
-        alpha_be = be;
-        alpha_pl = pl;
-        alpha_phi = phi;
       }
     }
   }
@@ -1385,23 +1375,27 @@ void analyzer::run() {
 
   //for init:  Large values that are within the SRIM file range and the ion has to go far enough 
   //that it stops. Step size should be small
+  cout<<"-----Initializing Energy Loss-----"<<endl;
   be7_eloss = new LookUp(be7eloss_name, m_7be);  
   be7_eloss->InitializeLookupTables(30.0,200.0,0.01,0.04);  
   alpha_eloss = new LookUp(he4eloss_name, m_alpha);
   alpha_eloss->InitializeLookupTables(30.0,900.0,0.01,0.04); 
   he3_eloss = new LookUp(he3eloss_name, m_3he);
-  he3_eloss->InitializeLookupTables(30.0,1200.0,0.02,0.04);
+  he3_eloss->InitializeLookupTables(30.0,1200.0,0.01,0.04);
   proton_eloss = new LookUp(peloss_name, m_p);
-  proton_eloss->InitializeLookupTables(30.0, 11900.0, 0.05, 0.01);
+  proton_eloss->InitializeLookupTables(30.0, 11900.0, 0.01, 0.04);
   deuteron_eloss = new LookUp(deloss_name, m_d);
-  deuteron_eloss->InitializeLookupTables(18.0, 6600.0, 0.02, 0.04);
+  deuteron_eloss->InitializeLookupTables(18.0, 6600.0, 0.01, 0.04);
+  cout<<"----------------------------------"<<endl;
   
   string inputlistName;
   string outputName;
+  cout<<"----------------------------------"<<endl;
   cout<<"Enter inputlist file name: ";
   cin>>inputlistName;
   cout<<"Enter output ROOTFile name: ";
   cin>>outputName;
+  cout<<"----------------------------------"<<endl;
   char inputlistname[100], outputname[100];
   strcpy(inputlistname, inputlistName.c_str());
   strcpy(outputname, outputName.c_str());
@@ -1465,6 +1459,7 @@ void analyzer::run() {
       cout << "ROOT file: "<<rootName<<" does not exist!"<<endl;
       exit(EXIT_FAILURE);
     }
+    cout<<"----------------------------------"<<endl;
     cout<<"Processsing "<<rootName<<" ..."<<endl;
     cout<<"Beam Energy: "<<BeamE<<endl;
 
@@ -1522,6 +1517,7 @@ void analyzer::run() {
       }
     }//end event loop
     cout<<endl;
+    cout<<"----------------------------------"<<endl;
   }//end file list loop
   inputList.close();
   outFile->cd();

@@ -59,7 +59,7 @@ class SiHit{
     vector<SortByDetector> *ReadDet;
     vector<SortByHit> *ReadHit; 
 
-    SiHit() {};
+    SiHit() { ReadDet =0; ReadHit=0;};
 
     void ZeroSi_obj() {
       det_obj.DetID = -1;

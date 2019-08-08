@@ -5,4 +5,7 @@ rootfiles/
 *.o
 *.cxx
 *.pcm
+*.root
 analyzer
+badList
+srim_clean
