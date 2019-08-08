@@ -14,4 +14,4 @@ badList
 srim_clean
 
 ###include this###
-!gitignore
+!.gitignore
