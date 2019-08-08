@@ -1,6 +1,9 @@
 ###folders###
 rootfiles/
 
+###active files###
+*.swp
+
 ###compiled###
 *.o
 *.cxx
@@ -9,3 +12,6 @@ rootfiles/
 analyzer
 badList
 srim_clean
+
+###include this###
+!gitignore
