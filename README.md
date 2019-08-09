@@ -67,3 +67,6 @@ make
 ./analyzer
 ```
 and again follow the prompts.
+
+## Requirements
+ROOT version 6 or later and C++ 11 or later
