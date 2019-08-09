@@ -5,7 +5,7 @@ OBJDIR= ./objs/
 SRIMDIR = ./srim/
 BADDIR = ./badDet/
 ROOT= `root-config --cflags --glibs`
-CFLAGS= -g -Wall $(ROOT)
+CFLAGS= -std=c++11 -g -Wall $(ROOT)
 CPPFLAGS= -I$(INCLDIR) -I./ 
 LDFLAGS= -L$(INCLDIR) $(ROOT)
 SRC= $(wildcard $(SRCDIR)*.cpp)
