@@ -38,4 +38,4 @@ $(SRIM_EXE): $(SRIMDIR)SRIMscript.cpp
 	$(CC) -o $@ $^
 
 clean:
-	$(RM) $(OBJS) $(DICT) $(EXE) *.pcm
+	$(RM) $(OBJS) $(LIB) $(DICT) $(EXE) *.pcm
