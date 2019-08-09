@@ -42,4 +42,4 @@ $(BAD_EXE): $(DICT) $(BADDIR)BadDetector.cpp
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^
 
 clean:
-	$(RM) $(OBJS) $(DICT) $(EXE) *.pcm
+	$(RM) $(OBJS) $(LIB) $(DICT) $(EXE) *.pcm
