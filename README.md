@@ -2,6 +2,7 @@
 
 ## Description
 Based on code made by: M. Anastasiou, N. Rijal, and many others from the FSU Nuclear Physics group
+
 This program is ment to be the final stage of analysis for data from the FSU ANASEN detector. Its main goal is to take data which is stored in detector structures defined by the Main program (not included) and convert it into physical variables and plots of physical data. This is done through particle tracking methods and kinematics calculations. A makefile is included for easy compliation, along with a sample of data lists and srim files that will be necessary to run the program.
 
 ## Methods
