@@ -19,7 +19,7 @@
 
 using namespace std;
 
-struct SortByCsI {
+struct csievent {
   Int_t CsI_ID, mADC_ID, mADC_Ch;
   Double_t Up, Down, QQQ, Up_Shift, Down_Shift, QQQ_Shift;
   Double_t WCsI_X, WCsI_Y, WCsI_Z, WCsI_R, WCsI_Phi;
@@ -31,6 +31,7 @@ class CsIHit {
   public:
     vector<Double_t> CsI_Energy;
     Int_t NCsIHits;
+    struct SortByCsI:csievent {};
     SortByCsI csi_obj;
     vector<SortByCsI> Hit;
     vector<SortByCsI> *ReadHit;
