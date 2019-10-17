@@ -18,6 +18,7 @@
 #include "CsIHit.h"
 #include "SiHit.h"
 #include "PCHit.h"
+#include "TCutG.h"
 
 using namespace std;
 
@@ -29,6 +30,7 @@ class Reconstruct {
     LookUp* ELoss_eject;
     LookUp* ELoss_eject2;
     LookUp* ELoss_beam;
+    TCutG *beamCut, *bpzCut;
     const int MaxPCHits = 24, MaxSiHits = 500, MaxTracks = 100, NPCWires = 24;
     const float BeamE = 17.19;
 

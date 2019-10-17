@@ -10,6 +10,8 @@
 #include "Reconstruct.h"
 #include "TLorentzVector.h"
 #include "TMath.h"
+#include "TVector3.h"
+
 
 //Constructor
 Reconstruct::Reconstruct() {
@@ -126,6 +128,11 @@ void Reconstruct::CalcRecoil(Track Tr, Int_t eject, RecoilEvent &recoil) {
   recoil.Phi = Recoil_LV.Phi()*180.0/TMath::Pi();
   recoil.KE_recoil = Recoil_LV.E()-Recoil_LV.M();
   recoil.Ex_recoil = Recoil_LV.M() - m_recoil;
+
+  TVector3 boost = Parent_LV.BoostVector();
+  Eject_LV.Boost(-boost);
+  recoil.p_theta_cm = Eject_LV.Theta();
+  Eject_LV.Boost(boost);
 }
 
 /*DeltaZ()
@@ -216,6 +223,7 @@ void Reconstruct::CalcRecoil_MultiParticle(Track Tr, vector<Int_t> IsEject,
              E_eject1_rxn = 0.0, E_eject2_rxn = 0.0, E_eject3_rxn = 0.0, E_eject_tot = 0.0;
     
     Double_t BeamKE_avg = 0.0;
+    Double_t IntPoint  = 0.0;
     for (int i = 0; i<3; i++) {
       TrackEvent ejectile = Tr.TrEvent[IsEject[i]];
       Double_t E_eject_si = ejectile.SiEnergy;
@@ -244,6 +252,7 @@ void Reconstruct::CalcRecoil_MultiParticle(Track Tr, vector<Int_t> IsEject,
         eject2_LV.SetPxPyPzE(p_x,p_y,p_z, E_eject_tot);
         eject2_V.SetXYZ(p_x, p_y, p_z);
         BeamKE_avg += ejectile.BeamEnergy;
+        IntPoint += ejectile.IntPoint;
       } else if (i == 2) {
         E_eject3_rxn = ELoss_eject2->GetLookupEnergy(E_eject_si, -d_eject);
         E_eject_tot = E_eject3_rxn+m_ejectile2;
@@ -254,22 +263,30 @@ void Reconstruct::CalcRecoil_MultiParticle(Track Tr, vector<Int_t> IsEject,
         eject3_LV.SetPxPyPzE(p_x, p_y, p_z, E_eject_tot);
         eject3_V.SetXYZ(p_x, p_y, p_z);
         BeamKE_avg += ejectile.BeamEnergy;
+        IntPoint += ejectile.IntPoint;
       }
     }
  
     Sum_eject_LV = eject1_LV + eject2_LV + eject3_LV;
     Sum_eject_V = eject1_V + eject2_V + eject3_V;
-  
-    Double_t Beam_KE = Sum_eject_LV.E()-m_target-m_beam;//Qvalue included in this calc implicitly
+    
  
     BeamKE_avg = BeamKE_avg/2.0;
+    IntPoint  = IntPoint/2.0;
     BeamE_tot = BeamKE_avg + m_beam; 
-    recoil.BeamKE = BeamKE_avg;
     Double_t BeamP_z = sqrt(BeamE_tot*BeamE_tot - m_beam*m_beam);
-    BeamE_tot_qval = Beam_KE + m_beam;
- 
-    Double_t BeamP_z_qval = sqrt(BeamE_tot_qval*BeamE_tot_qval - m_beam*m_beam);
-    Beam_LV_qval.SetPxPyPzE(0.0,0.0, BeamP_z_qval, BeamE_tot_qval);
+
+    Double_t BeamKE_qval = Sum_eject_LV.E()-m_target-m_beam;
+    BeamE_tot_qval = BeamKE_qval+m_beam;
+    Double_t BeamP_z_qval = sqrt(BeamE_tot_qval*BeamE_tot_qval - m_beam*m_beam); 
+    Beam_LV_qval.SetPxPyPzE(0.,0.,BeamP_z_qval,BeamE_tot_qval);
+    TLorentzVector temp = Sum_eject_LV-Target_LV;
+    Double_t radius = sqrt(temp.Px()*temp.Px()+
+                           temp.Py()*temp.Py());
+    if(radius>100.0 || !beamCut->IsInside(BeamKE_avg,BeamKE_qval) || 
+       !bpzCut->IsInside(temp.Pz(),temp.E()-m_beam)){
+      return;
+    }
     Parent_LV_beam_qval = Target_LV + Beam_LV_qval;
     Recoil_LV_beam_qval = Parent_LV_beam_qval - eject1_LV;
  
@@ -277,8 +294,15 @@ void Reconstruct::CalcRecoil_MultiParticle(Track Tr, vector<Int_t> IsEject,
     Parent_LV = Target_LV + Beam_LV;
     Recoil_LV = Parent_LV - Sum_eject_LV;
     TLorentzVector Recoil_LV_2a = eject2_LV+eject3_LV;
- 
-    recoil.BeamPz = BeamP_z;
+
+    recoil.BeamKE_LV = temp.E() - m_beam;
+    recoil_qval.BeamKE_LV = temp.E() - m_beam;
+    recoil.BeamKE = BeamKE_avg;
+    recoil.SumE = Sum_eject_LV.E();
+    recoil.ParentE = Parent_LV.E();
+    recoil_qval.SumE = Sum_eject_LV.E();
+    recoil_qval.ParentE = Parent_LV_beam_qval.E();
+    recoil.BeamPz = temp.Pz();
     recoil_qval.recoil_mass_sq = Recoil_LV_2a.M()*Recoil_LV_2a.M()/1.0e6;//convert to GeV^2
     recoil.recoil_mass_sq = Recoil_LV_2a.M()*Recoil_LV_2a.M()/1.0e6;
     recoil.a1_ip = Tr.TrEvent[IsEject[1]].IntPoint;
@@ -287,8 +311,30 @@ void Reconstruct::CalcRecoil_MultiParticle(Track Tr, vector<Int_t> IsEject,
     recoil_qval.a1_ip = Tr.TrEvent[IsEject[1]].IntPoint;
     recoil_qval.a2_ip = Tr.TrEvent[IsEject[2]].IntPoint;
     recoil_qval.p_ip = Tr.TrEvent[IsEject[0]].IntPoint;
-    recoil_qval.BeamPz = BeamP_z;
-    recoil_qval.BeamKE = Beam_KE;
+    recoil.IntPoint = IntPoint;
+    recoil_qval.IntPoint = IntPoint;
+
+    TVector3 boost = Parent_LV.BoostVector();
+    TVector3 boostq = Parent_LV_beam_qval.BoostVector();
+    Parent_LV.Boost(-boost);
+    Recoil_LV_2a.Boost(-boost);
+    TLorentzVector temp_p = Parent_LV-Recoil_LV_2a;
+    recoil.p_theta_cm = temp_p.Theta();
+    recoil.BeamKE_cm = Parent_LV.E()-m_beam-m_target;
+    Parent_LV.Boost(boost);
+    Recoil_LV_2a.Boost(boost);
+    Parent_LV_beam_qval.Boost(-boostq);
+    Recoil_LV_2a.Boost(-boostq);
+    temp_p = Parent_LV - Recoil_LV_2a;
+    recoil_qval.p_theta_cm = temp_p.Theta();
+    recoil_qval.BeamKE_cm = Parent_LV_beam_qval.E()-m_beam-m_target;
+    Parent_LV_beam_qval.Boost(boostq);
+    Recoil_LV_2a.Boost(boostq);
+
+    recoil_qval.BeamPz = Beam_LV_qval.Pz();
+    recoil_qval.BeamPx = Beam_LV_qval.Px();
+    recoil_qval.BeamPy = Beam_LV_qval.Py();
+    recoil_qval.BeamKE = Beam_LV_qval.E()-m_beam;
     recoil_qval.BeamKE_eject = BeamKE_avg;
     recoil_qval.Theta = Recoil_LV_beam_qval.Theta()*180.0/TMath::Pi();
     recoil_qval.Phi = Recoil_LV_beam_qval.Phi()*180.0/TMath::Pi();
@@ -305,6 +351,12 @@ void Reconstruct::CalcRecoil_MultiParticle(Track Tr, vector<Int_t> IsEject,
     recoil.Ex_recoil = Recoil_LV.M() - m_recoil;
     recoil.Ex_recoil_2a = Recoil_LV_2a.M()-m_recoil;
     recoil.Ex_recoil_2a = Recoil_LV_2a.M() - m_recoil;
+    recoil.Eprxn = E_eject1_rxn;
+    recoil.Ea1rxn = E_eject2_rxn;
+    recoil.Ea2rxn = E_eject3_rxn;
+    recoil_qval.Eprxn = E_eject1_rxn;
+    recoil_qval.Ea1rxn = E_eject2_rxn;
+    recoil_qval.Ea2rxn = E_eject3_rxn;
  
     recoil.Delta_Phi = abs(eject1_LV.Phi()-eject2_LV.Phi());
     if(recoil.Delta_Phi > TMath::Pi() && recoil.Delta_Phi <= 2*TMath::Pi()) {
@@ -453,6 +505,7 @@ void Reconstruct::CalcRecoil_InvMassSelect(Track Tr, vector<int> IsEject, Recoil
   if(IsEject.size() == 3) {
     TLorentzVector eject1_LV(0,0,0,0), eject2_LV(0,0,0,0), eject3_LV(0,0,0,0);
     Double_t BeamKE_avg = 0.0;
+    Double_t IntPoint = 0.0;
     for (int i=0; i<3; i++) {
       TrackEvent ejectile = Tr.TrEvent[IsEject[i]];
       Double_t pl = ejectile.PathLength;
@@ -478,6 +531,7 @@ void Reconstruct::CalcRecoil_InvMassSelect(Track Tr, vector<int> IsEject, Recoil
                              P_eject_tot*cos(theta),
                              E_eject_tot);
         BeamKE_avg += be;
+        IntPoint += ejectile.IntPoint;
       }else {
         Double_t E_eject_rxn = ELoss_eject2->GetLookupEnergy(sie, -pl);
         Double_t E_eject_tot = E_eject_rxn+m_ejectile2;
@@ -487,48 +541,104 @@ void Reconstruct::CalcRecoil_InvMassSelect(Track Tr, vector<int> IsEject, Recoil
                              P_eject_tot*cos(theta),
                              E_eject_tot);
         BeamKE_avg += be;
+        IntPoint += ejectile.IntPoint;
       }
     }
     TLorentzVector Sum_eject_LV = eject1_LV+eject2_LV+eject3_LV;
-    Double_t BeamKE = Sum_eject_LV.E()-m_target-m_beam;
     BeamKE_avg = BeamKE_avg/3.0;
+    IntPoint = IntPoint/2.0;
     Double_t E_beam_tot = BeamKE_avg +m_beam;
-    Double_t E_beam_tot_qval = BeamKE +m_beam;
     Double_t Pz_beam = sqrt(E_beam_tot*E_beam_tot - m_beam*m_beam);
-    Double_t Pz_beam_qval = sqrt(E_beam_tot_qval*E_beam_tot_qval - m_beam*m_beam);
     TLorentzVector beam_LV(0,0,0,0), beam_qval_LV(0,0,0,0), targ_LV(0,0,0,0);
     beam_LV.SetPxPyPzE(0,0,Pz_beam,E_beam_tot);
-    beam_qval_LV.SetPxPyPzE(0,0,Pz_beam_qval,E_beam_tot_qval);
     targ_LV.SetPxPyPzE(0,0,0,m_target);
+    Double_t BeamKE = Sum_eject_LV.E()-m_target-m_beam;
+    Double_t E_beam_tot_qval = BeamKE + m_beam;
+    Double_t Pz_beam_qval = sqrt(E_beam_tot_qval*E_beam_tot_qval - m_beam*m_beam);
+    beam_qval_LV.SetPxPyPzE(0.,0.,Pz_beam_qval,E_beam_tot_qval);
+    TLorentzVector temp = Sum_eject_LV-targ_LV;
+    Double_t radius = sqrt(temp.Px()*temp.Px()+
+                           temp.Py()*temp.Py());
+    if(radius>100.0 || !beamCut->IsInside(BeamKE_avg, BeamKE) || 
+       !bpzCut->IsInside(temp.Pz(),temp.E()-m_beam)) {
+      return;
+    }
     TLorentzVector parent_LV = targ_LV+beam_LV;
     TLorentzVector parent_qval_LV = targ_LV+beam_qval_LV;
 
     TLorentzVector recoil_LV;
     TLorentzVector rec1_LV = eject1_LV+eject2_LV;
     TLorentzVector rec2_LV = eject1_LV+eject3_LV;
-    Double_t ex1 = rec1_LV.M()-m_recoil;
-    Double_t ex2 = rec2_LV.M()-m_recoil;
+    Double_t ex1 = rec1_LV.M();
+    Double_t ex2 = rec2_LV.M();
     if(ex1<ex2) {
       recoil_LV = rec1_LV;
-      recoil.Ex_recoil = ex1;
-      recoil_qval.Ex_recoil = ex1;
+      recoil.Ex_recoil = ex1 - m_recoil;
+      recoil_qval.Ex_recoil = ex1 - m_recoil;
+      TVector3 b = parent_LV.BoostVector();
+      TVector3 bq = parent_qval_LV.BoostVector();
+      eject2_LV.Boost(-b);
+      eject3_LV.Boost(-b);
+      recoil.a1_theta_cm = eject2_LV.Theta();
+      recoil.a2_theta_cm = eject3_LV.Theta();
+      eject2_LV.Boost(b);
+      eject3_LV.Boost(b);
+      eject2_LV.Boost(-bq);
+      eject3_LV.Boost(-bq);
+      recoil_qval.a1_theta_cm = eject2_LV.Theta();
+      recoil_qval.a2_theta_cm = eject3_LV.Theta();
+      eject2_LV.Boost(bq);
+      eject3_LV.Boost(bq);
+      recoil.eject_detid = Tr.TrEvent[IsEject[2]].DetID;
     } else {
       recoil_LV = rec2_LV;
-      recoil.Ex_recoil = ex2;
-      recoil_qval.Ex_recoil = ex2;
+      recoil.Ex_recoil = ex2-m_recoil;
+      recoil_qval.Ex_recoil = ex2-m_recoil;
+      TVector3 b = parent_LV.BoostVector();
+      TVector3 bq = parent_qval_LV.BoostVector();
+      eject3_LV.Boost(-b);
+      eject2_LV.Boost(-b);
+      recoil.a1_theta_cm = eject3_LV.Theta();
+      recoil.a2_theta_cm = eject2_LV.Theta();
+      eject3_LV.Boost(b);
+      eject2_LV.Boost(b);
+      eject3_LV.Boost(-bq);
+      eject2_LV.Boost(-bq);
+      recoil_qval.a1_theta_cm = eject3_LV.Theta();
+      recoil_qval.a2_theta_cm = eject2_LV.Theta();
+      eject3_LV.Boost(bq);
+      eject2_LV.Boost(bq);
+      recoil.eject_detid = Tr.TrEvent[IsEject[1]].DetID;
     }
 
     recoil.recoil_mass_sq = recoil_LV.M()*recoil_LV.M()/1.0e6;
     recoil_qval.recoil_mass_sq = recoil_LV.M()*recoil_LV.M()/1.0e6;//convert to GeV^2
     recoil.BeamPz = Pz_beam;
+    recoil.SumE = Sum_eject_LV.E();
+    recoil.ParentE = parent_LV.E();
+    recoil_qval.SumE = Sum_eject_LV.E();
+    recoil_qval.ParentE = parent_qval_LV.E();
+
+    TVector3 boost = parent_LV.BoostVector();
+    TVector3 boostq = parent_qval_LV.BoostVector();
+    
+    parent_LV.Boost(-boost);
+    recoil.BeamKE_cm = parent_LV.E()-m_beam-m_target;
+    parent_LV.Boost(-boostq);
+    parent_qval_LV.Boost(-parent_qval_LV.BoostVector());
+    recoil_qval.BeamKE_cm = parent_qval_LV.E()-m_beam-m_target;
+    parent_qval_LV.Boost(boostq);
+
     recoil.a1_ip = Tr.TrEvent[IsEject[1]].IntPoint;
     recoil.a2_ip = Tr.TrEvent[IsEject[2]].IntPoint;
     recoil.p_ip = Tr.TrEvent[IsEject[0]].IntPoint;
     recoil_qval.a1_ip = Tr.TrEvent[IsEject[1]].IntPoint;
     recoil_qval.a2_ip = Tr.TrEvent[IsEject[2]].IntPoint;
     recoil_qval.p_ip = Tr.TrEvent[IsEject[0]].IntPoint;
-    recoil_qval.BeamPz = Pz_beam_qval;
-    recoil_qval.BeamKE = BeamKE;
+    recoil.IntPoint = IntPoint;
+    recoil_qval.IntPoint = IntPoint;
+    recoil_qval.BeamPz = beam_qval_LV.Pz();
+    recoil_qval.BeamKE = beam_qval_LV.E()-m_beam;
     recoil_qval.BeamKE_eject = BeamKE_avg;
     recoil_qval.Theta = recoil_LV.Theta()*180.0/TMath::Pi();
     recoil_qval.Phi = recoil_LV.Phi()*180.0/TMath::Pi();

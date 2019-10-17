@@ -59,7 +59,8 @@ class analyzer {
     Int_t FindMaxSi(Double_t phi, SiHit& Si);
     vector<Int_t> FindGoodCsI_Vector(Double_t phi, CsIHit& CsI);
     void getCut(string pcutfile, string acutfile, string he3cutfile, string dcutfile, string 
-                jacutfile);
+                jacutfile, string beamcutfile, string li5Cutfile, string be8Cutfile, 
+                string bpzcutfile);
     void recoilReset(RecoilEvent &recoil);
     bool RecoverTrack1(TrackEvent track1, TrackEvent &track2);
     bool MCP_RF();
@@ -110,7 +111,10 @@ class analyzer {
     //Storage
     TList *fhlist;
     map<string, TH1*> fhmap;
-    TCutG *protonCut, *alphaCut, *he3Cut, *deutCut, *joinedAlphaCut;
+    TCutG *protonCut, *alphaCut, *he3Cut, *deutCut, *joinedAlphaCut, *beamCut,
+          *li5Cut, *be8Cut, *bpzCut;
+    TFile *protonfile, *alphafile, *he3file, *deutfile, *jafile, *beamfile,
+          *li5file, *be8file, *bpzfile;
     TObjArray *rootObj;
     vector<Double_t> WireRadii;
     

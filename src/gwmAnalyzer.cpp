@@ -44,6 +44,15 @@ analyzer::~analyzer() {
   delete he3_eloss;
   delete proton_eloss;
   delete alpha_eloss;
+  if(protonfile->IsOpen()) protonfile->Close();
+  if(alphafile->IsOpen()) alphafile->Close();
+  if(he3file->IsOpen()) he3file->Close();
+  if(deutfile->IsOpen()) deutfile->Close();
+  if(jafile->IsOpen()) jafile->Close();
+  if(beamfile->IsOpen()) beamfile->Close();
+  if(li5file->IsOpen()) li5file->Close();
+  if(be8file->IsOpen()) be8file->Close();
+  if(bpzfile->IsOpen()) bpzfile->Close();
 }
 
 /*SetFlag()
@@ -77,42 +86,87 @@ void analyzer::SetFlag(string flagName) {
  *Cuts should be stored in a file and feed through this function
  *Cuts can all be in one file or in many files, just make sure names match
  */
-void analyzer::getCut(string pcutfile, string acutfile, string he3cutfile, string dcutfile, string                      jacutfile) {
+void analyzer::getCut(string pcutfile, string acutfile, string he3cutfile, string dcutfile, string jacutfile, string beamcutfile, string li5cutfile, string be8cutfile, string bpzcutfile) {
   cout<<"---------------Cuts---------------"<<endl;
   cout<<"Proton cut file: "<<pcutfile<<endl;
   cout<<"Alpha cut file: "<<acutfile<<endl;
   cout<<"He3 cut file: "<<he3cutfile<<endl;
   cout<<"Deuteron cut file: "<<dcutfile<<endl;
   cout<<"Joined Alpha cut file: "<<jacutfile<<endl;
+  cout<<"BeamKE cut file: "<<beamcutfile<<endl;
+  cout<<"Be8 cut file: "<<be8cutfile<<endl;
+  cout<<"Li5 cut file: "<<li5cutfile<<endl;
+  cout<<"Beam Pz cut file: "<<bpzcutfile<<endl;
   cout<<"----------------------------------"<<endl;
   char protonname[pcutfile.length()], alphaname[acutfile.length()], he3name[he3cutfile.length()];
   char deuteronname[dcutfile.length()], janame[jacutfile.length()];
+  char beamname[beamcutfile.length()], li5name[li5cutfile.length()];
+  char be8name[be8cutfile.length()];
+  char bpzname[bpzcutfile.length()];
 
   strcpy(protonname, pcutfile.c_str());
   strcpy(alphaname, acutfile.c_str());
   strcpy(he3name, he3cutfile.c_str());
   strcpy(deuteronname, dcutfile.c_str());
   strcpy(janame, jacutfile.c_str());
+  strcpy(beamname,beamcutfile.c_str());
+  strcpy(be8name, be8cutfile.c_str());
+  strcpy(li5name, li5cutfile.c_str());
+  strcpy(bpzname, bpzcutfile.c_str());
 
-  TFile *protonfile = new TFile(protonname, "READ");
+  protonfile = new TFile(protonname, "READ");
   protonCut = (TCutG*) protonfile->Get("CUTG");
   protonCut->SetName("protonCut");
+  protonCut->SetVarX("TrackEvents.SiEnergy");
+  protonCut->SetVarY("TrackEvents.PCEnergy*sin(TrackEvents.Theta)");
 
-  TFile *alphafile = new TFile(alphaname, "READ");
+  alphafile = new TFile(alphaname, "READ");
   alphaCut = (TCutG*) alphafile->Get("CUTG");
   alphaCut->SetName("alphaCut");
+  alphaCut->SetVarX("TrackEvents.SiEnergy");
+  alphaCut->SetVarY("TrackEvents.PCEnergy*sin(TrackEvents.Theta)");
 
-  TFile *he3file = new TFile(he3name, "READ");
+  he3file = new TFile(he3name, "READ");
   he3Cut = (TCutG*) he3file->Get("CUTG");
   he3Cut->SetName("he3Cut");
+  he3Cut->SetVarX("TrackEvents.SiEnergy");
+  he3Cut->SetVarY("TrackEvents.PCEnergy*sin(TrackEvents.Theta)");
 
-  TFile *deutfile = new TFile(deuteronname, "READ");
+  deutfile = new TFile(deuteronname, "READ");
   deutCut = (TCutG*) deutfile->Get("CUTG");
   deutCut->SetName("deutCut");
+  deutCut->SetVarX("TrackEvents.SiEnergy");
+  deutCut->SetVarY("TrackEvents.PCEnergy*sin(TrackEvents.Theta)");
 
-  TFile *jafile = new TFile(janame, "READ");
+  jafile = new TFile(janame, "READ");
   joinedAlphaCut = (TCutG*) jafile->Get("CUTG");
   joinedAlphaCut->SetName("joinedAlphaCut");
+  joinedAlphaCut->SetVarX("TrackEvents.SiEnergy");
+  joinedAlphaCut->SetVarY("TrackEvents.PCEnergy*sin(TrackEvents.Theta)");
+  
+  beamfile = new TFile(beamname, "READ");
+  beamCut = (TCutG*) beamfile->Get("CUTG");
+  beamCut->SetName("beamCut");
+  beamCut->SetVarX("Be8_1p_2a.BeamKE");
+  beamCut->SetVarY("Be8_1p_2a_qval.BeamKE");
+
+  be8file = new TFile(be8name, "READ");
+  be8Cut = (TCutG*) be8file->Get("CUTG");
+  be8Cut->SetName("be8Cut");
+  be8Cut->SetVarX("Be8_1p_2a.recoil_mass_sq");
+  be8Cut->SetVarY("Li5.recoil_mass_sq");
+
+  li5file = new TFile(li5name, "READ");
+  li5Cut = (TCutG*) li5file->Get("CUTG");
+  li5Cut->SetName("li5Cut");
+  li5Cut->SetVarX("Be8_1p_2a.recoil_mass_sq");
+  li5Cut->SetVarY("Li5.recoil_mass_sq");
+ 
+  bpzfile = new TFile(bpzname, "READ");
+  bpzCut = (TCutG*) bpzfile->Get("CUTG");
+  bpzCut->SetName("bpzCut");
+  bpzCut->SetVarX("Be8_1p_2a.BeamPz");
+  bpzCut->SetVarY("Be8_1p_2a.BeamKE_LV");
 }
 
 /*recoilReset()
@@ -145,6 +199,19 @@ void analyzer::recoilReset(RecoilEvent &recoil) {
   recoil.BeamKE = -10;
   recoil.BeamKE_eject = -10;
   recoil.recoil_mass_sq = -10;
+  recoil.BeamPx = -10;
+  recoil.BeamPy = -10;
+  recoil.BeamPz = -10;
+  recoil.BeamKE_cm = -10;
+  recoil.a1_theta_cm = -10;
+  recoil.p_theta_cm = -10;
+  recoil.Eprxn = -10;
+  recoil.Ea1rxn = -10;
+  recoil.Ea2rxn = -10;
+  recoil.SumE = -10;
+  recoil.ParentE = -10;
+  recoil.BeamKE_LV = -10;
+  recoil.eject_detid = -10;
 }
 
 /*GetPCWireRadius()
@@ -979,6 +1046,10 @@ void analyzer::CalcRecoilE() {
         Double_t rex = Li6.Ex_recoil;
         Double_t rbe = Li6.BeamKE;
 
+        Int_t beamBin = ceil(rbe/0.2);
+        MyFill(Form("ExLi6_%ibin",beamBin),100,-2.0,2.0,rex);
+        MyFill("AngDist_6Li",10,-1.0,1.0,Li6.p_theta_cm);
+
         MyFill("6LiExEnergy",100,0,15,rex);
         MyFill("BeamE_Tracked_vs_BeamKE_6Li_cre", 300,-0.1,20,be,300,-0.1,20,rbe);
         MyFill("Ex6Li_vs_BeamKE_cre",300, -0.1,20,rbe,300,0,15,rex);
@@ -1153,9 +1224,13 @@ void analyzer::ReconstructMe() {
   be8_calc.ELoss_eject = proton_eloss;
   be8_calc.ELoss_eject2 = alpha_eloss;
   be8_calc.ELoss_beam = be7_eloss;
+  be8_calc.beamCut = beamCut;
+  be8_calc.bpzCut = bpzCut;
   li5_calc.ELoss_eject = proton_eloss;
   li5_calc.ELoss_eject2 = alpha_eloss;
   li5_calc.ELoss_beam = be7_eloss;
+  li5_calc.beamCut = beamCut;
+  li5_calc.bpzCut = bpzCut;
   vector<Int_t> IsEject;
   vector<Int_t> IsProton;
   vector<Int_t> IsAlpha;
@@ -1180,6 +1255,24 @@ void analyzer::ReconstructMe() {
       } else if (protonCut->IsInside(sie, pce*sin(theta))) {
         IsProton.push_back(i);
       }
+    }
+  }
+  if(IsProton.size() < 1 && IsAlpha.size() == 2 && tracks.NTracks2 == 1) {
+    int i  = tracks.NTracks1;
+    IsProton.push_back(i);
+    TrackEvent alpha = tracks.TrEvent[IsAlpha[0]];
+    TrackEvent proton = tracks.TrEvent[i];
+    Double_t intp = alpha.IntPoint;
+    Double_t siz = proton.SiZ;
+    Double_t sir = proton.SiR;
+    Double_t pl = sqrt((siz-intp)*(siz-intp)+sir*sir);
+    tracks.TrEvent[i].PathLength = pl;
+    if((intp - siz)>0) {
+      tracks.TrEvent[i].Theta = atan(sir/(intp-siz));
+    } else if ((intp-siz) < 0) {
+      tracks.TrEvent[i].Theta = TMath::Pi() + atan(sir/(intp-siz));
+    } else { 
+      tracks.TrEvent[i].Theta = TMath::Pi()/2.0;
     }
   }
   //all histos in this section tagged with _rm (ReconstructMe) to avoid confusion in 
@@ -1265,19 +1358,6 @@ void analyzer::ReconstructMe() {
       MyFill("BeamKE_Qvalue_8Be_rm",600,-10,80,bmWAQval);
       MyFill("BeamKE_Qvalue_8Be_cm_rm",180,-1,15,bmWAQval*4/22);
    
-      //test spectra; REMOVE POST TEST? Yes
-      if((a1detid>-1 && a1detid<4) && (a2detid>-1 && a2detid<4)) {
-        MyFill("Ex8Be_Q3_testAnd_rm",600,-20,50,ex);
-      }
-      if((a1detid>-1 || a1detid<4) || (a2detid>-1 || a2detid<4)) {
-        MyFill("Ex8Be_Q3_testOr_rm",600,-20,50,ex);
-      }
-      if(a1detid>-1 && a1detid<4) {
-        MyFill("Ex8Be_Q3_testa1_rm",600,-20,50,ex);
-      }
-      if(a2detid>-1 && a2detid<4) {
-        MyFill("Ex8Be_Q3_testa2_rm",600,-20,50,ex);
-      }
       MyFill("BeamKE_Track_vs_BeamKE_a1_rm",600,-10,20,bmWA,600,-10,20,a1be);
       MyFill("BeamKE_Track_vs_BeamKE_a2_rm",600,-10,20,bmWA,600,-10,20,a2be);
       MyFill("Ex8Be_vs_BeamKE_rm",600,-10,80,bmWA,600,-20,50,ex);
@@ -1297,6 +1377,28 @@ void analyzer::ReconstructMe() {
       Double_t ker = Be8_1p_2a.KE_recoil;
       Double_t theta = Be8_1p_2a.Theta;
       MyFill("8BeKE_vs_Theta_8Be_rm",300,-0.1,180,theta,300,-0.1,80,ker);
+      Float_t beamKE_step = 0.2;
+      Int_t beamBin = ceil(Be8_1p_2a.BeamKE/beamKE_step);
+      Float_t ms_2a = Be8_1p_2a.recoil_mass_sq;
+      Float_t ms_ap = Li5.recoil_mass_sq;
+      Float_t thbe = Be8_1p_2a.p_theta_cm;
+      Float_t thli = Li5.a2_theta_cm;
+      Int_t tbin = ceil(cos(thli)/0.2)+5;
+      if(Be8_1p_2a.BeamKE != -10) {
+        MyFill(Form("DP_%ibin",beamBin),90,55.55,56.0,ms_2a,50,21.75,22.0,ms_ap);
+        MyFill("DP",90,55.55,56.0,ms_2a,50,21.75,22.0,ms_ap);
+        if(li5Cut->IsInside(ms_2a, ms_ap) && Li5.BeamKE_cm > 0.267 && Li5.BeamKE_cm < 0.468) {
+          MyFill("AngDist_Li5_0.267_0.468",10,-1.0,1.0,cos(thli));
+        } else if (li5Cut->IsInside(ms_2a, ms_ap)&&Li5.BeamKE_cm>1.11&&Li5.BeamKE_cm<1.2919){
+          MyFill("AngDist_Li5_1.11_1.2919",10,-1.0,1.0,cos(thli));
+        }
+        if(be8Cut->IsInside(ms_2a,ms_ap)&&Be8_1p_2a.BeamKE_cm>1.07&&Be8_1p_2a.BeamKE_cm<1.244) {
+          MyFill("AngDist_Be8_1.07_1.244",10,-1.0,1.0,cos(thbe));
+        }
+        if(li5Cut->IsInside(ms_2a, ms_ap)) {
+          MyFill(Form("DP_%ibbin_%itbin",beamBin,tbin),90,55.55,56.00,ms_2a,50,21.75,22.0,ms_ap);
+        }
+      }
     }
   }
   be8_calc.ELoss_eject = NULL;
@@ -1433,16 +1535,23 @@ void analyzer::run() {
   }
 
   if(cutFlag) {
-    string protonCutfile, alphaCutfile, he3Cutfile, deutCutfile, joinedAlphaCutfile;
+    string protonCutfile, alphaCutfile, he3Cutfile, deutCutfile, joinedAlphaCutfile, 
+           beamCutfile, li5Cutfile, be8Cutfile, bpzCutfile;
     getline(inputList, protonCutfile);
     getline(inputList, alphaCutfile);
     getline(inputList, he3Cutfile);
     getline(inputList, deutCutfile);
     getline(inputList, joinedAlphaCutfile);
-    getCut(protonCutfile, alphaCutfile, he3Cutfile, deutCutfile, joinedAlphaCutfile);
+    getline(inputList, beamCutfile);
+    getline(inputList, be8Cutfile);
+    getline(inputList, li5Cutfile);
+    getline(inputList, bpzCutfile);
+    getCut(protonCutfile, alphaCutfile, he3Cutfile, deutCutfile, joinedAlphaCutfile, 
+           beamCutfile, li5Cutfile, be8Cutfile, bpzCutfile);
   }
   rootObj->Add(protonCut); rootObj->Add(alphaCut); rootObj->Add(he3Cut);
-  rootObj->Add(joinedAlphaCut);
+  rootObj->Add(joinedAlphaCut); rootObj->Add(beamCut); rootObj->Add(be8Cut);
+  rootObj->Add(li5Cut); rootObj->Add(bpzCut);
 
   string rootName;
   char rootname[100];

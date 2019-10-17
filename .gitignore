@@ -12,6 +12,7 @@ rootfiles/
 analyzer
 badList
 srim_clean
+cs
 
 ###include this###
 !.gitignore

@@ -5,6 +5,9 @@ Based on code made by: M. Anastasiou, N. Rijal, and many others from the FSU Nuc
 
 This program is ment to be the final stage of analysis for data from the FSU ANASEN detector. Its main goal is to take data which is stored in detector structures defined by the Main program (not included) and convert it into physical variables and plots of physical data. This is done through particle tracking methods and kinematics calculations. A makefile is included for easy compliation, along with a sample of data lists and srim files that will be necessary to run the program.
 
+Additionally, it contains a program for calculating cross sections and angular distributions from data and simulation. Simulation code can be found at https://github.com/gwm17/gwm\_sim.git
+The source codes for this stage of analysis are located in the /dalitz directory.
+
 ## Methods
 ### Tracking
 Particle tracking is the main objective of ANANSEN, and as such takes up most of the work done by this program. Tracks are of three types:

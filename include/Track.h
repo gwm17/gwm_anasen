@@ -92,6 +92,11 @@ struct RecoilEvent {
   
   Double_t BeamKE, BeamKE_WAIntP, BeamKE_eject, theta_eject1, theta_eject2;
   Double_t BeamPz, a1_ip, a2_ip, p_ip, recoil_mass_sq;
+  Double_t BeamPx, BeamPy;
+  Double_t BeamKE_cm, a1_theta_cm, p_theta_cm, a2_theta_cm;
+  Double_t Eprxn, Ea1rxn, Ea2rxn, SumE, ParentE;
+  Double_t BeamKE_LV;
+  Int_t eject_detid;
     
 };
 
